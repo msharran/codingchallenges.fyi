@@ -1,7 +1,7 @@
-const Message = @import("Proto.zig").Message;
+const Message = @import("RedisProto.zig").Message;
 const std = @import("std");
 const handlers = @import("handlers.zig");
-
+const log = std.log.scoped(.router);
 const Router = @This();
 const HandlerFn = *const fn (Message) Message;
 

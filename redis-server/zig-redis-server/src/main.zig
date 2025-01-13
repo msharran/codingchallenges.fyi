@@ -1,6 +1,8 @@
 const std = @import("std");
 const server = @import("Server.zig");
 
+const log = std.log.scoped(.main);
+
 pub fn main() !void {
     const address = try std.net.Address.parseIp("127.0.0.1", 6379);
 
@@ -12,6 +14,6 @@ pub fn main() !void {
     defer svr.deinit();
 
     svr.listenAndServe(address) catch |err| {
-        std.debug.print("Failed to start server: {}\n", .{err});
+        log.err("Server error: {}", .{err});
     };
 }

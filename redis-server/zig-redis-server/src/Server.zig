@@ -1,12 +1,10 @@
 const std = @import("std");
 const net = std.net;
 const posix = std.posix;
-const Proto = @import("Proto.zig");
+const RedisProto = @import("RedisProto.zig");
 const Router = @import("Router.zig");
-
 const Server = @This();
-
-const ServeMux = struct {};
+const log = std.log.scoped(.server);
 
 /// router is responsible for handling the commands received by the server.
 router: Router,
@@ -38,7 +36,7 @@ pub fn listenAndServe(self: Server, address: std.net.Address) !void {
     try posix.bind(listener, &address.any, address.getOsSockLen());
     try posix.listen(listener, 128);
 
-    std.debug.print("=> Server listening on {}\n", .{address});
+    log.info("Server listening on {}", .{address});
 
     var buf: [128]u8 = undefined;
     while (true) {
@@ -46,26 +44,21 @@ pub fn listenAndServe(self: Server, address: std.net.Address) !void {
         var client_address_len: posix.socklen_t = @sizeOf(net.Address);
 
         const socket = posix.accept(listener, &client_address.any, &client_address_len, 0) catch |err| {
-            std.debug.print("=> error accept: {}\n", .{err});
+            log.err("Failed to accept connection: {}", .{err});
             continue;
         };
         defer posix.close(socket);
 
-        std.debug.print("=> client {} connected\n", .{client_address});
-        defer std.debug.print("=> client {} disconnected\n", .{client_address});
+        log.info("Client connected: {}", .{client_address});
+        defer log.info("Client disconnected: {}", .{client_address});
 
         const read = posix.read(socket, &buf) catch |err| {
-            std.debug.print("error reading: {}\n", .{err});
+            log.err("Failed to read from client: {}", .{err});
             continue;
         };
 
         if (read == 0) {
-            continue;
-        }
-
-        std.debug.print("=> read {} bytes\n", .{read});
-
-        if (read == 0) {
+            log.info("Read 0 bytes from client, closing connection", .{});
             continue;
         }
 
@@ -76,45 +69,34 @@ pub fn listenAndServe(self: Server, address: std.net.Address) !void {
         // usage since we only deallocate the memory when the server
         // is deinitialised.
 
-        const redis_proto = Proto.init(self.allocator);
-        errdefer redis_proto.deinit();
+        const resp = RedisProto.init(self.allocator);
+        defer resp.deinit();
 
-        const msg = redis_proto.deserialise(buf[0..read]) catch |err| {
-            std.debug.print("=> error serialising: {}\n", .{err});
+        const msg = resp.deserialise(buf[0..read]) catch |err| {
+            log.err("Failed to deserialise message: {}", .{err});
             continue;
         };
-
-        std.debug.print("=> deserialised message\n", .{});
 
         const resp_msg = try self.router.handle(msg);
 
-        std.debug.print("=> handled message\n", .{});
-
-        const raw_msg = redis_proto.serialise(resp_msg) catch |err| {
-            std.debug.print("=> error serialising: {}\n", .{err});
+        const raw_msg = resp.serialise(resp_msg) catch |err| {
+            log.err("Failed to serialise message: {}", .{err});
             continue;
         };
 
-        std.debug.print("=> serialised message\n", .{});
-
         writeAll(socket, raw_msg) catch |err| {
-            std.debug.print("=> error writing: {}\n", .{err});
+            log.err("Failed to write to client: {}", .{err});
         };
-
-        redis_proto.deinit();
     }
 }
 
 fn writeAll(socket: posix.socket_t, msg: []const u8) !void {
     var pos: usize = 0;
     while (pos < msg.len) {
-        std.debug.print("=> writing data {s}\n", .{msg[pos..]});
         const written = try posix.write(socket, msg[pos..]);
         if (written == 0) {
             return error.Closed;
         }
         pos += written;
     }
-
-    std.debug.print("=> wrote {} bytes\n", .{pos});
 }

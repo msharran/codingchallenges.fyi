@@ -1,8 +1,7 @@
 const std = @import("std");
-const debug = std.debug;
-const assert = debug.assert;
-
-const Proto = @This();
+const assert = std.debug.assert;
+const RedisProto = @This();
+const log = std.log.scoped(.redis_proto);
 
 const CRLF: []const u8 = "\r\n";
 const CRLF_LEN: usize = CRLF.len;
@@ -17,12 +16,12 @@ comptime {
 /// (My reasoning)
 arena: std.heap.ArenaAllocator,
 
-pub fn init(allocator: std.mem.Allocator) Proto {
+pub fn init(allocator: std.mem.Allocator) RedisProto {
     const arena = std.heap.ArenaAllocator.init(allocator);
-    return Proto{ .arena = arena };
+    return RedisProto{ .arena = arena };
 }
 
-pub fn deinit(self: Proto) void {
+pub fn deinit(self: RedisProto) void {
     self.arena.deinit();
 }
 
@@ -85,7 +84,7 @@ pub const Message = struct {
     }
 };
 
-pub fn deserialise(self: Proto, raw: []const u8) !Message {
+pub fn deserialise(self: RedisProto, raw: []const u8) !Message {
     if (raw.len == 0) {
         return error.EmptyRequest;
     }
@@ -141,7 +140,7 @@ pub fn deserialise(self: Proto, raw: []const u8) !Message {
 /// e.g. "*2\r\n$4\r\nECHO\r\n$5\r\nhello\r\n"
 /// item 1: "$4\r\nECHO\r\n" => "ECHO\r\n"
 /// item 2: "$5\r\nhello\r\n" => "hello\r\n"
-fn toOwnedMessages(self: Proto, raw: []const u8) ![][]u8 {
+fn toOwnedMessages(self: RedisProto, raw: []const u8) ![][]u8 {
     var parts = std.mem.splitSequence(u8, raw, CRLF);
     const arrlenbytes = parts.first();
     if (arrlenbytes.len != 2) {
@@ -189,7 +188,7 @@ fn toOwnedMessages(self: Proto, raw: []const u8) ![][]u8 {
     return s;
 }
 
-pub fn serialise(self: Proto, m: Message) ![]u8 {
+pub fn serialise(self: RedisProto, m: Message) ![]u8 {
     const data_type = try m.type.toChar();
     const content = m.value;
 
@@ -268,7 +267,7 @@ test "deserialise first bulk_string" {
 test "deserialise array" {
     const raw = "*3\r\n$4\r\nECHO\r\n$5\r\nhello\r\n:123\r\n";
 
-    const proto = Proto.init(std.testing.allocator);
+    const proto = RedisProto.init(std.testing.allocator);
     defer proto.deinit();
 
     const got = try proto.deserialise(raw);

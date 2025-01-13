@@ -1,5 +1,7 @@
 const std = @import("std");
-const proto = @import("Proto.zig");
+const proto = @import("RedisProto.zig");
+
+const log = std.log.scoped(.handlers);
 
 pub fn ping(_: proto.Message) proto.Message {
     return .{ .type = .SimpleString, .value = .{ .single = "PONG" } };
