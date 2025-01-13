@@ -1,0 +1,8 @@
+[package]
+name = "ratelimiter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rouille = "3.6.2"
+serde = { version = "1.0.215", features = ["derive"] }

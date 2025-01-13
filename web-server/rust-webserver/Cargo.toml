@@ -1,0 +1,8 @@
+[package]
+name = "cc-rust-webserver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+log = "0.4.22"
+stderrlog = "0.6.0"
