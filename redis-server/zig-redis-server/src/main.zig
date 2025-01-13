@@ -13,6 +13,8 @@ pub fn main() !void {
     var svr = try server.init(allocator);
     defer svr.deinit();
 
+    log.info("Server initialized", .{});
+
     svr.listenAndServe(address) catch |err| {
         log.err("Server error: {}", .{err});
     };
