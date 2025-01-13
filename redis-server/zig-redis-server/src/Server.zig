@@ -50,7 +50,7 @@ pub fn listenAndServe(self: Server, address: std.net.Address) !void {
         defer posix.close(socket);
 
         log.info("Client connected: {}", .{client_address});
-        defer log.info("Client disconnected: {}", .{client_address});
+        defer log.info("Client connection closed: {}", .{client_address});
 
         const read = posix.read(socket, &buf) catch |err| {
             log.err("Failed to read from client: {}", .{err});

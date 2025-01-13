@@ -202,20 +202,22 @@ pub fn serialise(self: RedisProto, m: Message) ![]u8 {
             _ = try std.fmt.bufPrint(buf, "{c}{s}{s}", .{ data_type, content.single, CRLF });
         },
         .BulkString => {
-            // total len = data_type + CRLF + conent len + CRLF + content + CRLF
-            // convert content.len to string and get the length of the string
-            var content_len: [1024]u8 = undefined;
-            const content_len_str = try std.fmt.bufPrint(&content_len, "{d}", .{content.single.len});
+            // To allocate memory for the content length
+            // we need to know the exact memory spaced used by
+            // the int. So we convert the int to a string
+            // and then get the length of the string.
+            // any other better way?
+            var content_len_buf: [128]u8 = undefined;
+            const content_len = try std.fmt.bufPrint(&content_len_buf, "{d}", .{content.single.len});
 
             var a = arena.allocator();
-            buf = try a.alloc(u8, 1 + CRLF_LEN + content_len_str.len + CRLF_LEN + content.single.len + CRLF_LEN);
+            buf = try a.alloc(u8, 1 + content_len.len + CRLF_LEN + content.single.len + CRLF_LEN);
             errdefer a.free(buf);
-            _ = try std.fmt.bufPrint(buf, "{c}{s}{s}{s}{s}{s}", .{ data_type, CRLF, content_len_str, CRLF, content.single, CRLF });
+            _ = try std.fmt.bufPrint(buf, "{c}{s}{s}{s}{s}", .{ data_type, content_len, CRLF, content.single, CRLF });
         },
-        else => {
-            return error.UnsupportedDataType;
-        },
+        else => return error.UnsupportedDataType,
     }
+    log.debug("Serialised: {s}", .{buf}); //TODO: support --verbose flag
     return buf;
 }
 

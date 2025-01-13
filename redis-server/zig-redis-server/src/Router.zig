@@ -1,10 +1,3 @@
-const Message = @import("RedisProto.zig").Message;
-const std = @import("std");
-const handlers = @import("handlers.zig");
-const log = std.log.scoped(.router);
-const Router = @This();
-const HandlerFn = *const fn (Message) Message;
-
 /// Router is a simple command router that routes messages to handlers.
 /// syntax:
 ///     command -> handler
@@ -12,29 +5,43 @@ const HandlerFn = *const fn (Message) Message;
 /// Example:
 ///     - "PING" -> fn(Message) Message { return Message{ .data_type = DataType.SimpleString, .content = "PONG" }; }
 ///     - "ECHO" -> fn(Message) Message { return Message{ .data_type = DataType.SimpleString, .content = message.content }; }
-routeHandlers: std.StringHashMap(HandlerFn),
+const Message = @import("RedisProto.zig").Message;
+const std = @import("std");
+const handlers = @import("handlers.zig");
+const log = std.log.scoped(.router);
+const Router = @This();
+const HandlerFn = *const fn (Message) Message;
+
+const Route = struct {
+    command: []const u8,
+    handler: HandlerFn,
+};
+
+const routes = [_]Route{
+    .{ .command = "PING", .handler = handlers.ping },
+    .{ .command = "ECHO", .handler = handlers.echo },
+};
+
+/// Stores all the mapping of command to handler.
+store: std.StringHashMap(HandlerFn),
 
 allocator: std.mem.Allocator,
 
-// init allocates memory for the hashmap
-// and returns a CommandRouter instance.
-// Caller should call self.deinit to free the memory.
 pub fn init(allocator: std.mem.Allocator) !Router {
     const routeHandlers = std.StringHashMap(HandlerFn).init(allocator);
-    var r = Router{ .routeHandlers = routeHandlers, .allocator = allocator };
-    try r.registerRoute("PING", handlers.ping);
-    try r.registerRoute("ECHO", handlers.echo);
+    var r = Router{ .store = routeHandlers, .allocator = allocator };
+    for (routes) |route| {
+        try r.store.put(route.command, route.handler);
+    }
     return r;
 }
 
 pub fn deinit(self: *Router) void {
-    self.routeHandlers.deinit();
+    self.store.deinit();
 }
 
-fn registerRoute(self: *Router, command: []const u8, handler_fn: HandlerFn) !void {
-    try self.routeHandlers.put(command, handler_fn);
-}
-
+/// Routes the message to the appropriate handler.
+/// Looks up the command in the store and calls the handler.
 pub fn handle(self: Router, message: Message) !Message {
     // const command = message.value.single;
 
@@ -52,15 +59,13 @@ pub fn handle(self: Router, message: Message) !Message {
     if (message.value.list.items.len < 1) {
         return Message{ .type = .Error, .value = .{ .single = "ERR bad request: expected at least one item" } };
     }
+
     const command = message.value.list.items[0].value.single;
-    const handlerfn = self.findHandler(command);
-    if (handlerfn) |h| {
+    const handler = self.store.get(command);
+
+    if (handler) |h| {
         return h(message);
     } else {
         return Message{ .type = .Error, .value = .{ .single = "ERR unknown command" } };
     }
-}
-
-fn findHandler(self: Router, command: []const u8) ?HandlerFn {
-    return self.routeHandlers.get(command);
 }
