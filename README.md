@@ -8,6 +8,7 @@ Planning to stream in Twitch: https://www.twitch.tv/msharran
 
 # Key projects
 
-- zig: redis server
-- go: dns resolver
+- [zig: Redis Server](redis-server/zig-redis-server)
+- [go: DNS Resolver](dns-resolver/cc-go-dns-resolver)
+- [rust: Container](docker/rust-docker)
 
