@@ -11,12 +11,10 @@ allocator: std.mem.Allocator,
 /// Ref: https://zig.news/edyu/zig-unionenum-wtf-is-switchunionenum-2e02
 pub const Object = union(ObjectType) {
     string: []const u8,
-    int: i32,
 };
 
 pub const ObjectType = enum {
     string,
-    int,
 };
 
 pub fn init(allocator: std.mem.Allocator) !*ObjectStore {
@@ -54,5 +52,14 @@ pub fn getString(self: *ObjectStore, key: []const u8) !?[]const u8 {
     switch (v.?) {
         .string => return v.?.string,
         else => return error.NotAStringValue,
+    }
+}
+
+pub fn printAll(self: ObjectStore) void {
+    var iter = self.objects.iterator();
+    while (iter.next()) |kv| {
+        const k = kv.key_ptr.*;
+        const v = kv.value_ptr.*;
+        log.debug("key: {s}, value: {}", .{ k, v });
     }
 }

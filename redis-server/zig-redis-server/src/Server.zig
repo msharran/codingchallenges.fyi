@@ -14,19 +14,17 @@ const Request = @import("command.zig").Request;
 router: Router,
 
 /// allocator is used to allocate memory for the server.
-gpa: std.heap.GeneralPurposeAllocator(.{}),
+allocator: std.mem.Allocator,
 
 object_store: *ObjectStore,
 
 /// init allocates memory for the server.
 /// Caller should call self.deinit to free the memory.
-pub fn init() !Server {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-
-    const obj_store = try ObjectStore.init(gpa.allocator());
-    const router = try Router.init(gpa.allocator(), obj_store);
+pub fn init(allocator: std.mem.Allocator) !Server {
+    const obj_store = try ObjectStore.init(allocator);
+    const router = try Router.init(allocator, obj_store);
     const s = Server{
-        .gpa = gpa,
+        .allocator = allocator,
         .router = router,
         .object_store = obj_store,
     };
@@ -34,10 +32,10 @@ pub fn init() !Server {
 }
 
 pub fn deinit(self: *Server) void {
-    self.router.deinit();
+    defer std.debug.print("Server deinitialised", .{});
     self.object_store.deinit();
-    const check = self.gpa.deinit();
-    log.info("Server deinitialised, mem leak check {}", .{check});
+    self.router.deinit();
+    self.* = undefined;
 }
 
 pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
@@ -78,7 +76,7 @@ pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
             continue;
         }
 
-        const resp = RespParser.init(self.gpa.allocator());
+        const resp = RespParser.init(self.allocator);
         defer resp.deinit();
 
         const msg = resp.deserialise(buf[0..read]) catch |err| {

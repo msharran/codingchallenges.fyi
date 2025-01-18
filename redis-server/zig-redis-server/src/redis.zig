@@ -10,7 +10,12 @@ pub const Options = struct {
 };
 
 pub fn startServer(o: Options) !void {
-    var server = try Server.init();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        const check = gpa.deinit();
+        std.debug.print("GPA deinitialised check={}", .{check});
+    }
+    var server = try Server.init(gpa.allocator());
     defer server.deinit();
 
     log.info("Server initialised", .{});

@@ -57,9 +57,9 @@ test "set command" {
     var msg_list = std.ArrayList(Message).init(gpa.allocator());
     defer msg_list.deinit();
 
-    try msg_list.append(Message.simpleString("SET"));
-    try msg_list.append(Message.simpleString("foo"));
-    try msg_list.append(Message.simpleString("bar"));
+    try msg_list.append(Message.bulkString("SET"));
+    try msg_list.append(Message.bulkString("foo"));
+    try msg_list.append(Message.bulkString("bar"));
 
     const msg = Message.initList(.Array, msg_list);
 
@@ -90,9 +90,9 @@ test "set command long string" {
     var msg_list = std.ArrayList(Message).init(gpa.allocator());
     defer msg_list.deinit();
 
-    try msg_list.append(Message.simpleString("SET"));
-    try msg_list.append(Message.simpleString("foo"));
-    try msg_list.append(Message.simpleString("xxxyyyzzzaaabbbcccdddeeefffggghhhiiijjjkkklllmmmnnnooop"));
+    try msg_list.append(Message.bulkString("SET"));
+    try msg_list.append(Message.bulkString("foo"));
+    try msg_list.append(Message.bulkString("xxxyyyzzzaaabbbcccdddeeefffggghhhiiijjjkkklllmmmnnnooop"));
 
     const msg = Message.initList(.Array, msg_list);
 
