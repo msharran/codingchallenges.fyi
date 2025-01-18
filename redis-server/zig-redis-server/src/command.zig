@@ -75,3 +75,36 @@ test "set command" {
     try expect(got != null);
     try std.testing.expectEqualStrings("bar", got.?);
 }
+
+test "set command long string" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        const check = gpa.deinit();
+        std.debug.print("mem leak check {}\n", .{check});
+        assert(check == .ok);
+    }
+
+    const obj_store = try ObjectStore.init(gpa.allocator());
+    defer obj_store.deinit();
+
+    var msg_list = std.ArrayList(Message).init(gpa.allocator());
+    defer msg_list.deinit();
+
+    try msg_list.append(Message.simpleString("SET"));
+    try msg_list.append(Message.simpleString("foo"));
+    try msg_list.append(Message.simpleString("xxxyyyzzzaaabbbcccdddeeefffggghhhiiijjjkkklllmmmnnnooop"));
+
+    const msg = Message.initList(.Array, msg_list);
+
+    const req = Request{
+        .message = msg,
+        .object_store = obj_store,
+    };
+
+    const res = set(req);
+    std.debug.print("res: {s}\n", .{res.value.single});
+
+    const got = try obj_store.getString("foo");
+    try expect(got != null);
+    try std.testing.expectEqualStrings("xxxyyyzzzaaabbbcccdddeeefffggghhhiiijjjkkklllmmmnnnooop", got.?);
+}
