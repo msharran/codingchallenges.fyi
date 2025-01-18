@@ -5,67 +5,75 @@
 /// Example:
 ///     - "PING" -> fn(Message) Message { return Message{ .data_type = DataType.SimpleString, .content = "PONG" }; }
 ///     - "ECHO" -> fn(Message) Message { return Message{ .data_type = DataType.SimpleString, .content = message.content }; }
-const Message = @import("RedisProto.zig").Message;
 const std = @import("std");
-const handlers = @import("handlers.zig");
 const log = std.log.scoped(.router);
+const ObjectStore = @import("ObjectStore.zig");
 const Router = @This();
-const HandlerFn = *const fn (Message) Message;
 
-const Route = struct {
-    command: []const u8,
-    handler: HandlerFn,
-};
-
-const routes = [_]Route{
-    .{ .command = "PING", .handler = handlers.ping },
-    .{ .command = "ECHO", .handler = handlers.echo },
-};
+const Message = @import("RespParser.zig").Message;
+const command = @import("command.zig");
+const CommandFn = command.CommandFn;
 
 /// Stores all the mapping of command to handler.
-store: std.StringHashMap(HandlerFn),
+routes: std.StringHashMap(CommandFn),
 
 allocator: std.mem.Allocator,
 
-pub fn init(allocator: std.mem.Allocator) !Router {
-    const routeHandlers = std.StringHashMap(HandlerFn).init(allocator);
-    var r = Router{ .store = routeHandlers, .allocator = allocator };
-    for (routes) |route| {
-        try r.store.put(route.command, route.handler);
-    }
+object_store: *ObjectStore,
+
+pub fn init(a: std.mem.Allocator, store: *ObjectStore) !Router {
+    const routes = std.StringHashMap(CommandFn).init(a);
+    var r = Router{
+        .routes = routes,
+        .allocator = a,
+        .object_store = store,
+    };
+    try r.registerRoutes();
     return r;
 }
 
+fn registerRoutes(self: *Router) !void {
+    const Route = struct {
+        command: []const u8,
+        handler: CommandFn,
+    };
+    const routes = [_]Route{
+        .{ .command = "PING", .handler = command.ping },
+        .{ .command = "ECHO", .handler = command.echo },
+        .{ .command = "SET", .handler = command.set },
+    };
+    for (routes) |r| {
+        try self.routes.put(r.command, r.handler);
+    }
+}
+
 pub fn deinit(self: *Router) void {
-    self.store.deinit();
+    self.routes.deinit();
 }
 
 /// Routes the message to the appropriate handler.
 /// Looks up the command in the store and calls the handler.
-pub fn handle(self: Router, message: Message) !Message {
-    // const command = message.value.single;
-
-    // msg will always be an array
-    // with first element as the command
-    // and the rest as the arguments.
-    // Example:
-    //    ["PING"]
-    //    ["ECHO", "hello"]
-
-    if (message.type != .Array) {
-        return Message{ .type = .Error, .value = .{ .single = "ERR bad request: expected array" } };
+/// msg will always be an array
+/// with first element as the command
+/// and the rest as the arguments.
+/// Example:
+///    ["PING"]
+///    ["ECHO", "hello"]
+pub fn route(self: Router, req: command.Request) !Message {
+    if (req.message.type != .Array) {
+        return Message.err("ERR bad request: expected array");
     }
 
-    if (message.value.list.items.len < 1) {
-        return Message{ .type = .Error, .value = .{ .single = "ERR bad request: expected at least one item" } };
+    if (req.message.value.list.items.len < 1) {
+        return Message.err("ERR bad request: expected at least one item");
     }
 
-    const command = message.value.list.items[0].value.single;
-    const handler = self.store.get(command);
+    const cmd = req.message.value.list.items[0].value.single;
+    const cmdFn = self.routes.get(cmd);
 
-    if (handler) |h| {
-        return h(message);
+    if (cmdFn) |c| {
+        return c(req);
     } else {
-        return Message{ .type = .Error, .value = .{ .single = "ERR unknown command" } };
+        return Message.err("ERR unknown command");
     }
 }

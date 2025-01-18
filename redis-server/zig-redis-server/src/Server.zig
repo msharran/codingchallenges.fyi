@@ -1,32 +1,46 @@
 const std = @import("std");
-const net = std.net;
-const posix = std.posix;
-const RedisProto = @import("RedisProto.zig");
+const log = std.log.scoped(.server);
+
+const ObjectStore = @import("ObjectStore.zig");
 const Router = @import("Router.zig");
 const Server = @This();
-const log = std.log.scoped(.server);
+
+const net = std.net;
+const posix = std.posix;
+const RespParser = @import("RespParser.zig");
+const Request = @import("command.zig").Request;
 
 /// router is responsible for handling the commands received by the server.
 router: Router,
 
 /// allocator is used to allocate memory for the server.
-allocator: std.mem.Allocator,
+gpa: std.heap.GeneralPurposeAllocator(.{}),
+
+object_store: *ObjectStore,
 
 /// init allocates memory for the server.
 /// Caller should call self.deinit to free the memory.
-pub fn init(allocator: std.mem.Allocator) !Server {
-    const r = try Router.init(allocator);
-    return Server{
-        .router = r,
-        .allocator = allocator,
+pub fn init() !Server {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+
+    const obj_store = try ObjectStore.init(gpa.allocator());
+    const router = try Router.init(gpa.allocator(), obj_store);
+    const s = Server{
+        .gpa = gpa,
+        .router = router,
+        .object_store = obj_store,
     };
+    return s;
 }
 
 pub fn deinit(self: *Server) void {
     self.router.deinit();
+    self.object_store.deinit();
+    const check = self.gpa.deinit();
+    log.info("Server deinitialised, mem leak check {}", .{check});
 }
 
-pub fn listenAndServe(self: Server, address: std.net.Address) !void {
+pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
     const tpe: u32 = posix.SOCK.STREAM;
     const protocol = posix.IPPROTO.TCP;
     const listener = try posix.socket(address.any.family, tpe, protocol);
@@ -38,6 +52,8 @@ pub fn listenAndServe(self: Server, address: std.net.Address) !void {
 
     log.info("Server listening on {}", .{address});
 
+    // TODO: Implement ring buffer for reading and writing
+    // https://discord.com/channels/1085221098129473637/1179194569800294550/1329122172685516860
     var buf: [128]u8 = undefined;
     while (true) {
         var client_address: net.Address = undefined;
@@ -62,14 +78,7 @@ pub fn listenAndServe(self: Server, address: std.net.Address) !void {
             continue;
         }
 
-        // TODO revist using any other allocator instead of
-        // arena allocator for proto here.
-        // For every new connection, we allocate memory for the message
-        // but do not deallocate it. This can lead to excessive memory
-        // usage since we only deallocate the memory when the server
-        // is deinitialised.
-
-        const resp = RedisProto.init(self.allocator);
+        const resp = RespParser.init(self.gpa.allocator());
         defer resp.deinit();
 
         const msg = resp.deserialise(buf[0..read]) catch |err| {
@@ -77,7 +86,8 @@ pub fn listenAndServe(self: Server, address: std.net.Address) !void {
             continue;
         };
 
-        const resp_msg = try self.router.handle(msg);
+        const req = Request{ .message = msg, .object_store = self.object_store };
+        const resp_msg = try self.router.route(req);
 
         const raw_msg = resp.serialise(resp_msg) catch |err| {
             log.err("Failed to serialise message: {}", .{err});
