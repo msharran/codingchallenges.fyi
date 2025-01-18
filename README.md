@@ -6,7 +6,7 @@ in https://codingchallenges.fyi
 
 Planning to stream in Twitch: https://www.twitch.tv/msharran
 
-# Key projects
+# Key Projects
 
 - [zig: Redis Server](redis-server/zig-redis-server)
 - [go: DNS Resolver](dns-resolver/cc-go-dns-resolver)
