@@ -1,6 +1,18 @@
 const std = @import("std");
-const redis = @import("redis.zig");
+const log = std.log.scoped(.redis);
+const Server = @import("Server.zig");
 
 pub fn main() !void {
-    try redis.startServer(.{ .host = "127.0.0.1", .port = 6379 });
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        const check = gpa.deinit();
+        std.debug.print("GPA deinitialised check={}", .{check});
+    }
+    var server = try Server.init(gpa.allocator());
+    defer server.deinit();
+
+    log.info("Server initialised", .{});
+
+    const address = try std.net.Address.parseIp("127.0.0.1", 6379);
+    try server.listenAndServe(address);
 }

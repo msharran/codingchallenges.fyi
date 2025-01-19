@@ -7,7 +7,7 @@ const Server = @This();
 
 const net = std.net;
 const posix = std.posix;
-const RespParser = @import("RespParser.zig");
+const Resp = @import("Resp.zig");
 const Request = @import("command.zig").Request;
 
 /// router is responsible for handling the commands received by the server.
@@ -22,7 +22,7 @@ dict: *Dictionary,
 /// Caller should call self.deinit to free the memory.
 pub fn init(allocator: std.mem.Allocator) !Server {
     const obj_store = try Dictionary.init(allocator);
-    const router = try Router.init(allocator, obj_store);
+    const router = try Router.init(allocator);
     const s = Server{
         .allocator = allocator,
         .router = router,
@@ -76,7 +76,7 @@ pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
             continue;
         }
 
-        const resp = RespParser.init(self.allocator);
+        const resp = Resp.init(self.allocator);
         defer resp.deinit();
 
         const msg = resp.deserialise(buf[0..read]) catch |err| {

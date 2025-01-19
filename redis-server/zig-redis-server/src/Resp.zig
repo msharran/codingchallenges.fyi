@@ -1,6 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
-const RespParser = @This();
+const Resp = @This();
 const log = std.log.scoped(.resp);
 
 const CRLF: []const u8 = "\r\n";
@@ -16,12 +16,12 @@ comptime {
 /// (My reasoning)
 arena: std.heap.ArenaAllocator,
 
-pub fn init(allocator: std.mem.Allocator) RespParser {
+pub fn init(allocator: std.mem.Allocator) Resp {
     const arena = std.heap.ArenaAllocator.init(allocator);
-    return RespParser{ .arena = arena };
+    return Resp{ .arena = arena };
 }
 
-pub fn deinit(self: RespParser) void {
+pub fn deinit(self: Resp) void {
     self.arena.deinit();
 }
 
@@ -100,7 +100,7 @@ pub const Message = struct {
     }
 };
 
-pub fn deserialise(self: RespParser, raw: []const u8) !Message {
+pub fn deserialise(self: Resp, raw: []const u8) !Message {
     if (raw.len == 0) {
         return error.EmptyRequest;
     }
@@ -156,7 +156,7 @@ pub fn deserialise(self: RespParser, raw: []const u8) !Message {
 /// e.g. "*2\r\n$4\r\nECHO\r\n$5\r\nhello\r\n"
 /// item 1: "$4\r\nECHO\r\n" => "ECHO\r\n"
 /// item 2: "$5\r\nhello\r\n" => "hello\r\n"
-fn toOwnedMessages(self: RespParser, raw: []const u8) ![][]u8 {
+fn toOwnedMessages(self: Resp, raw: []const u8) ![][]u8 {
     var parts = std.mem.splitSequence(u8, raw, CRLF);
     const arrlenbytes = parts.first();
     if (arrlenbytes.len != 2) {
@@ -204,7 +204,7 @@ fn toOwnedMessages(self: RespParser, raw: []const u8) ![][]u8 {
     return s;
 }
 
-pub fn serialise(self: RespParser, m: Message) ![]u8 {
+pub fn serialise(self: Resp, m: Message) ![]u8 {
     const data_type = try m.type.toChar();
     const content = m.value;
 
@@ -285,7 +285,7 @@ test "deserialise first bulk_string" {
 test "deserialise array" {
     const raw = "*3\r\n$4\r\nECHO\r\n$5\r\nhello\r\n:123\r\n";
 
-    const proto = RespParser.init(std.testing.allocator);
+    const proto = Resp.init(std.testing.allocator);
     defer proto.deinit();
 
     const got = try proto.deserialise(raw);

@@ -3,7 +3,7 @@ const log = std.log.scoped(.command);
 const assert = std.debug.assert;
 const expect = std.testing.expect;
 
-const Message = @import("RespParser.zig").Message;
+const Message = @import("Resp.zig").Message;
 const Dictionary = @import("Dictionary.zig");
 pub const CommandFn = *const fn (Request) Message;
 

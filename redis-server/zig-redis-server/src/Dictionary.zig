@@ -1,12 +1,12 @@
 const std = @import("std");
-const log = std.log.scoped(.object_store);
+const log = std.log.scoped(.dictionary);
 const Dictionary = @This();
 
 entries: std.StringHashMap(Value),
 
 allocator: std.mem.Allocator,
 
-/// Object is a tagged union that represents a Redis object.
+/// A tagged union that represents a Redis object.
 /// Tagged unions seems to be a good fit for this kind of data.
 /// Ref: https://zig.news/edyu/zig-unionenum-wtf-is-switchunionenum-2e02
 pub const Value = union(ValueType) {
@@ -18,39 +18,39 @@ pub const ValueType = enum {
 };
 
 pub fn init(allocator: std.mem.Allocator) !*Dictionary {
-    const store = Dictionary{
+    const dict = Dictionary{
         .entries = std.StringHashMap(Value).init(allocator),
         .allocator = allocator,
     };
-    const kv_p = try allocator.create(Dictionary);
-    kv_p.* = store;
-    return kv_p;
+    const dict_p = try allocator.create(Dictionary);
+    dict_p.* = dict;
+    return dict_p;
 }
 
 pub fn deinit(self: *Dictionary) void {
     var iter = self.entries.iterator();
     while (iter.next()) |kv| {
-        const k_p = kv.key_ptr.*;
-        self.allocator.free(k_p);
+        const key_p = kv.key_ptr.*;
+        self.allocator.free(key_p);
     }
     self.entries.deinit();
     self.allocator.destroy(self);
 }
 
 pub fn putString(self: *Dictionary, key: []const u8, value: []const u8) !void {
-    const k_p = try self.allocator.dupe(u8, key);
-    const v = Value{ .string = value };
-    try self.entries.put(k_p, v);
+    const key_p = try self.allocator.dupe(u8, key);
+    const val = Value{ .string = value };
+    try self.entries.put(key_p, val);
 }
 
 pub fn getString(self: *Dictionary, key: []const u8) !?[]const u8 {
-    const v = self.entries.get(key);
-    if (v == null) {
+    const val = self.entries.get(key);
+    if (val == null) {
         return null;
     }
 
-    switch (v.?) {
-        .string => return v.?.string,
+    switch (val.?) {
+        .string => return val.?.string,
         else => return error.ValueNotString,
     }
 }

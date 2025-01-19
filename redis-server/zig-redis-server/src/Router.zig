@@ -9,7 +9,7 @@ const std = @import("std");
 const log = std.log.scoped(.router);
 const Router = @This();
 
-const Message = @import("RespParser.zig").Message;
+const Message = @import("Resp.zig").Message;
 const command = @import("command.zig");
 const CommandFn = command.CommandFn;
 
