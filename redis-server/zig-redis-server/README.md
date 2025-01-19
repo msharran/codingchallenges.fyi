@@ -3,13 +3,33 @@
 ## Start server
 
 ```sh
-zig run src/main.zig
+❯ zig build run
+info(redis): Server initialised
+info(server): Server listening on 127.0.0.1:6379
+info(server): Client connected: 127.0.0.1:49803
+debug(resp): Serialised: +PONG
+
+info(server): Client connection closed: 127.0.0.1:49803
+info(server): Client connected: 127.0.0.1:49823
+debug(resp): Serialised: $12
+Hello World!
+
+info(server): Client connection closed: 127.0.0.1:49823
+info(server): Client connected: 127.0.0.1:49841
+debug(resp): Serialised: +OK
+
+info(server): Client connection closed: 127.0.0.1:49841
 ```
 
-## Test server
+## Connect to server using `redis-cli` 
 
 ```sh
-echo -ne "*1\r\n\$4\r\nPING\r\n" | nc localhost 6379
+❯ redis-cli PING
+PONG
+❯ redis-cli ECHO "Hello World!"
+"Hello World!"
+❯ redis-cli SET foo bar
+OK
 ```
 
 ---
