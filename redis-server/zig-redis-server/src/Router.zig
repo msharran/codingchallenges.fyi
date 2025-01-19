@@ -7,7 +7,6 @@
 ///     - "ECHO" -> fn(Message) Message { return Message{ .data_type = DataType.SimpleString, .content = message.content }; }
 const std = @import("std");
 const log = std.log.scoped(.router);
-const ObjectStore = @import("ObjectStore.zig");
 const Router = @This();
 
 const Message = @import("RespParser.zig").Message;
@@ -19,14 +18,11 @@ routes: std.StringHashMap(CommandFn),
 
 allocator: std.mem.Allocator,
 
-object_store: *ObjectStore,
-
-pub fn init(a: std.mem.Allocator, store: *ObjectStore) !Router {
+pub fn init(a: std.mem.Allocator) !Router {
     const routes = std.StringHashMap(CommandFn).init(a);
     var r = Router{
         .routes = routes,
         .allocator = a,
-        .object_store = store,
     };
     try r.registerRoutes();
     return r;

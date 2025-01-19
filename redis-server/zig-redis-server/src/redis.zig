@@ -1,7 +1,6 @@
 const std = @import("std");
 const log = std.log.scoped(.redis);
 
-const ObjectStore = @import("ObjectStore.zig");
 const Server = @import("Server.zig");
 
 pub const Options = struct {

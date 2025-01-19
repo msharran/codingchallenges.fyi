@@ -4,12 +4,12 @@ const assert = std.debug.assert;
 const expect = std.testing.expect;
 
 const Message = @import("RespParser.zig").Message;
-const ObjectStore = @import("ObjectStore.zig");
+const Dictionary = @import("Dictionary.zig");
 pub const CommandFn = *const fn (Request) Message;
 
 pub const Request = struct {
     message: Message,
-    object_store: *ObjectStore,
+    dict: *Dictionary,
 };
 
 pub fn ping(_: Request) Message {
@@ -35,7 +35,7 @@ pub fn set(r: Request) Message {
     const key = items[1].value.single;
     const value = items[2].value.single;
 
-    r.object_store.putString(key, value) catch |err| {
+    r.dict.putString(key, value) catch |err| {
         std.debug.print("ERR failed to set: {}\n", .{err});
         return Message.err("ERR failed to set");
     };
@@ -51,7 +51,7 @@ test "set command" {
         assert(check == .ok);
     }
 
-    const obj_store = try ObjectStore.init(gpa.allocator());
+    const obj_store = try Dictionary.init(gpa.allocator());
     defer obj_store.deinit();
 
     var msg_list = std.ArrayList(Message).init(gpa.allocator());
@@ -65,7 +65,7 @@ test "set command" {
 
     const req = Request{
         .message = msg,
-        .object_store = obj_store,
+        .dict = obj_store,
     };
 
     const res = set(req);
@@ -84,7 +84,7 @@ test "set command long string" {
         assert(check == .ok);
     }
 
-    const obj_store = try ObjectStore.init(gpa.allocator());
+    const obj_store = try Dictionary.init(gpa.allocator());
     defer obj_store.deinit();
 
     var msg_list = std.ArrayList(Message).init(gpa.allocator());
@@ -98,7 +98,7 @@ test "set command long string" {
 
     const req = Request{
         .message = msg,
-        .object_store = obj_store,
+        .dict = obj_store,
     };
 
     const res = set(req);

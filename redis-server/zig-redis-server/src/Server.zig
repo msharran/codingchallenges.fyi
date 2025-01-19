@@ -1,7 +1,7 @@
 const std = @import("std");
 const log = std.log.scoped(.server);
 
-const ObjectStore = @import("ObjectStore.zig");
+const Dictionary = @import("Dictionary.zig");
 const Router = @import("Router.zig");
 const Server = @This();
 
@@ -16,24 +16,24 @@ router: Router,
 /// allocator is used to allocate memory for the server.
 allocator: std.mem.Allocator,
 
-object_store: *ObjectStore,
+dict: *Dictionary,
 
 /// init allocates memory for the server.
 /// Caller should call self.deinit to free the memory.
 pub fn init(allocator: std.mem.Allocator) !Server {
-    const obj_store = try ObjectStore.init(allocator);
+    const obj_store = try Dictionary.init(allocator);
     const router = try Router.init(allocator, obj_store);
     const s = Server{
         .allocator = allocator,
         .router = router,
-        .object_store = obj_store,
+        .dict = obj_store,
     };
     return s;
 }
 
 pub fn deinit(self: *Server) void {
     defer std.debug.print("Server deinitialised", .{});
-    self.object_store.deinit();
+    self.dict.deinit();
     self.router.deinit();
     self.* = undefined;
 }
@@ -84,7 +84,7 @@ pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
             continue;
         };
 
-        const req = Request{ .message = msg, .object_store = self.object_store };
+        const req = Request{ .message = msg, .dict = self.dict };
         const resp_msg = try self.router.route(req);
 
         const raw_msg = resp.serialise(resp_msg) catch |err| {
