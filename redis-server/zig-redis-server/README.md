@@ -28,8 +28,12 @@ info(server): Client connection closed: 127.0.0.1:49841
 PONG
 ❯ redis-cli ECHO "Hello World!"
 "Hello World!"
+❯ redis-cli GET foo
+(nil)
 ❯ redis-cli SET foo bar
 OK
+❯ redis-cli GET foo
+"bar"
 ```
 
 ---

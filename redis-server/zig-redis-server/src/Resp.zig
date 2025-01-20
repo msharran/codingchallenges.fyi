@@ -31,10 +31,11 @@ pub const DataType = enum {
     Integer,
     BulkString,
     Array,
+    Nil,
 
     fn yes(char: u8) bool {
         return switch (char) {
-            '+', '-', ':', '$', '*' => true,
+            '+', '-', ':', '$', '*', '_' => true,
             else => false,
         };
     }
@@ -46,6 +47,7 @@ pub const DataType = enum {
             .Integer => @intCast(':'),
             .BulkString => @intCast('$'),
             .Array => @intCast('*'),
+            .Nil => @intCast('_'),
         };
     }
 
@@ -56,6 +58,7 @@ pub const DataType = enum {
             ':' => .Integer,
             '$' => .BulkString,
             '*' => .Array,
+            '_' => .Nil,
             else => return error.InvalidDataType,
         };
     }
@@ -98,6 +101,10 @@ pub const Message = struct {
     pub fn err(content: []const u8) Message {
         return .{ .type = .Error, .value = .{ .single = content } };
     }
+
+    pub fn nil() Message {
+        return .{ .type = .Nil, .value = .{ .single = "" } };
+    }
 };
 
 pub fn deserialise(self: Resp, raw: []const u8) !Message {
@@ -107,7 +114,7 @@ pub fn deserialise(self: Resp, raw: []const u8) !Message {
 
     const data_type = try DataType.fromChar(raw[0]);
     switch (data_type) {
-        .SimpleString, .Error, .Integer => {
+        .SimpleString, .Error, .Integer, .Nil => {
             const value = raw[1 .. raw.len - CRLF_LEN];
             const last_2_bytes = raw[raw.len - CRLF_LEN ..];
             if (!std.mem.eql(u8, last_2_bytes, CRLF)) {
@@ -211,7 +218,7 @@ pub fn serialise(self: Resp, m: Message) ![]u8 {
     var arena = self.arena;
     var buf: []u8 = undefined;
     switch (m.type) {
-        .SimpleString, .Error, .Integer => {
+        .SimpleString, .Error, .Integer, .Nil => {
             var a = arena.allocator();
             buf = try a.alloc(u8, 1 + content.single.len + CRLF_LEN); // data_type + content + crlf
             errdefer a.free(buf);

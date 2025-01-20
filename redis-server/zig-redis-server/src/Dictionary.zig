@@ -45,14 +45,9 @@ pub fn putString(self: *Dictionary, key: []const u8, value: []const u8) !void {
 
 pub fn getString(self: *Dictionary, key: []const u8) !?[]const u8 {
     const val = self.entries.get(key);
-    if (val == null) {
-        return null;
-    }
 
-    switch (val.?) {
-        .string => return val.?.string,
-        else => return error.ValueNotString,
-    }
+    if (val) |v| return v.string;
+    return null;
 }
 
 pub fn printAll(self: Dictionary) void {

@@ -43,6 +43,26 @@ pub fn set(r: Request) Message {
     return Message.simpleString("OK");
 }
 
+pub fn get(r: Request) Message {
+    const items = r.message.value.list.items;
+    if (items.len < 2) {
+        return Message.err("ERR bad request: expected at least two arguments");
+    }
+
+    const key = items[1].value.single;
+
+    const value = r.dict.getString(key) catch |err| {
+        std.debug.print("ERR failed to set: {}\n", .{err});
+        return Message.err("ERR failed to set");
+    };
+
+    if (value == null) {
+        return Message.nil();
+    }
+
+    return Message.bulkString(value.?);
+}
+
 test "set command" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
