@@ -1,5 +1,12 @@
 # Redis Server
 
+# Features
+
+- RESP Protocol Serialisation and Deserialisation (Simple String, Bulk String, Integer, Error, Nil)
+- Commands Supported: PING, ECHO, SET, GET
+
+# Getting Started
+
 ## Start server
 
 ```sh
