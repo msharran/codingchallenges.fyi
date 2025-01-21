@@ -4,6 +4,7 @@
 
 - RESP Protocol Serialisation and Deserialisation (Simple String, Bulk String, Integer, Error, Nil)
 - Commands Supported: PING, ECHO, SET, GET
+- Multi threaded connection handling using Thread Pool Strategy
 
 # Getting Started
 
