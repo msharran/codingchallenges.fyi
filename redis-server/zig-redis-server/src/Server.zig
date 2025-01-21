@@ -18,21 +18,35 @@ allocator: std.mem.Allocator,
 
 dict: *Dictionary,
 
+/// pool is used to handle incoming connections concurrently.
+pool: *ThreadPool,
+
 /// init allocates memory for the server.
 /// Caller should call self.deinit to free the memory.
 pub fn init(allocator: std.mem.Allocator) !Server {
     const obj_store = try Dictionary.init(allocator);
     const router = try Router.init(allocator);
-    const s = Server{
+
+    const opt = ThreadPool.Options{
+        .n_jobs = 20, // TODO: Make this configurable
+        .allocator = allocator,
+    };
+    var pool = try allocator.create(ThreadPool);
+    try pool.init(opt);
+
+    return Server{
         .allocator = allocator,
         .router = router,
         .dict = obj_store,
+        .pool = pool,
     };
-    return s;
 }
 
 pub fn deinit(self: *Server) void {
     defer std.debug.print("Server deinitialised", .{});
+
+    self.pool.deinit();
+    self.allocator.destroy(self.pool);
     self.dict.deinit();
     self.router.deinit();
     self.* = undefined;
@@ -56,19 +70,24 @@ pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
         var client_address: net.Address = undefined;
         var client_address_len: posix.socklen_t = @sizeOf(net.Address);
 
-        const connection = posix.accept(listener, &client_address.any, &client_address_len, 0) catch |err| {
+        const connection: posix.socket_t = posix.accept(listener, &client_address.any, &client_address_len, 0) catch |err| {
             log.err("Failed to accept connection: {}", .{err});
             return;
         };
+        errdefer posix.close(connection);
 
-        self.handle_connection(connection, client_address);
+        log.info("Accepted connection from {}", .{client_address});
+        self.pool.spawn(handle_connection, .{ self, connection }) catch |err| {
+            log.err("Failed to spawn worker: {}", .{err});
+        };
     }
 }
 
-fn handle_connection(self: *Server, connection: posix.socket_t, client_addr: net.Address) void {
+fn handle_connection(self: *Server, connection: posix.socket_t) void {
     defer posix.close(connection);
-    log.info("Client connected: {}", .{client_addr});
-    defer log.info("Client connection closed: {}", .{client_addr});
+
+    log.info("Client connected: {}", .{connection});
+    defer log.info("Client connection closed: {}", .{connection});
 
     var buf: [128]u8 = undefined;
     const read = posix.read(connection, &buf) catch |err| {
