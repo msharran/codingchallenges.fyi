@@ -142,11 +142,11 @@ pub fn deserialise(self: Resp, raw: []const u8) !Message {
             return Message.init(data_type, string_part);
         },
         DataType.Array => {
-            const raw_msgs = try self.toOwnedMessages(raw);
+            const raw_msgs = try self.getArrayItems(raw);
 
             // init an array list of messages
             var arena = self.arena;
-            var list = std.ArrayList(Message).init(arena.allocator());
+            var list = try std.ArrayList(Message).initCapacity(arena.allocator(), raw_msgs.len);
 
             for (raw_msgs) |msg| {
                 const m = try self.deserialise(msg);
@@ -158,12 +158,12 @@ pub fn deserialise(self: Resp, raw: []const u8) !Message {
     }
 }
 
-/// merges merges parts of items in an array
+/// merges parts of items in an array
 /// into a single item
 /// e.g. "*2\r\n$4\r\nECHO\r\n$5\r\nhello\r\n"
 /// item 1: "$4\r\nECHO\r\n" => "ECHO\r\n"
 /// item 2: "$5\r\nhello\r\n" => "hello\r\n"
-fn toOwnedMessages(self: Resp, raw: []const u8) ![][]u8 {
+fn getArrayItems(self: Resp, raw: []const u8) ![][]u8 {
     var parts = std.mem.splitSequence(u8, raw, CRLF);
     const arrlenbytes = parts.first();
     if (arrlenbytes.len != 2) {
@@ -173,7 +173,8 @@ fn toOwnedMessages(self: Resp, raw: []const u8) ![][]u8 {
     const arr_len = try std.fmt.parseInt(usize, arrlenbytes[1..], 10);
 
     var arena = self.arena;
-    var commands = std.ArrayList([]u8).init(arena.allocator());
+
+    var commands = try std.ArrayList([]u8).initCapacity(arena.allocator(), arr_len);
 
     var cmd: ?std.ArrayList(u8) = null;
     while (parts.next()) |part| {
@@ -185,9 +186,12 @@ fn toOwnedMessages(self: Resp, raw: []const u8) ![][]u8 {
                 try commands.append(try c.toOwnedSlice());
             }
 
-            // init new raw_content with the data_type part
-            // no need deinit since we are converting to owned slice
-            cmd = std.ArrayList(u8).init(arena.allocator());
+            // if there are chars after the data type byte till
+            // CRLF, and it is a number, then it is the length.
+            // Use that length to set the capacity of the array list
+            const item_len_bytes = part[1..];
+            const item_len = std.fmt.parseInt(usize, item_len_bytes, 10) catch 0;
+            cmd = try std.ArrayList(u8).initCapacity(arena.allocator(), item_len);
 
             try cmd.?.appendSlice(part);
             try cmd.?.appendSlice(CRLF);
