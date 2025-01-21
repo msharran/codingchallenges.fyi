@@ -7,6 +7,11 @@ entries: std.StringHashMap(Value),
 
 allocator: std.mem.Allocator,
 
+/// This can be performant compared to mutex in this
+/// case because reads are allowed to happen concurrently
+/// if there are no writes happening.
+/// Only the write lock is exclusive.
+/// Ref: https://pedropark99.github.io/zig-book/Chapters/14-threads.html#using-readwrite-locks-in-zig
 rwlock: *RwLock,
 
 /// A tagged union that represents a Redis object.
