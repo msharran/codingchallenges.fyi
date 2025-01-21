@@ -209,6 +209,10 @@ fn getArrayItems(self: Resp, raw: []const u8) ![][]u8 {
     }
 
     if (arr_len != commands.items.len) {
+        log.err("Array length mismatch: expected {d}, got {d}", .{ arr_len, commands.items.len });
+        for (commands.items) |c| {
+            log.err("command = {s}", .{c});
+        }
         return error.ArrayLengthMismatch;
     }
     const s = try commands.toOwnedSlice();
@@ -244,7 +248,6 @@ pub fn serialise(self: Resp, m: Message) ![]u8 {
         },
         else => return error.UnsupportedDataType,
     }
-    log.debug("Serialised: {s}", .{buf}); //TODO: support --verbose flag
     return buf;
 }
 

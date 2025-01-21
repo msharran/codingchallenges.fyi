@@ -28,7 +28,7 @@ pub fn init(allocator: std.mem.Allocator) !Server {
     const router = try Router.init(allocator);
 
     const opt = ThreadPool.Options{
-        .n_jobs = 64, // TODO: Make this configurable
+        .n_jobs = 4, // TODO: Make this configurable
         .allocator = allocator,
     };
     var pool = try allocator.create(ThreadPool);
@@ -86,9 +86,6 @@ pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
 fn handle_connection(self: *Server, connection: posix.socket_t) void {
     defer posix.close(connection);
 
-    log.info("Client connected: {}", .{connection});
-    defer log.info("Client connection closed: {}", .{connection});
-
     // 2.5 second timeout
     const timeout = posix.timeval{ .tv_sec = 2, .tv_usec = 500_000 };
     posix.setsockopt(connection, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout)) catch |err| {
@@ -100,7 +97,7 @@ fn handle_connection(self: *Server, connection: posix.socket_t) void {
         return;
     };
 
-    var buf: [128]u8 = undefined;
+    var buf: [4028]u8 = undefined;
     const read = posix.read(connection, &buf) catch |err| {
         log.err("Failed to read from client: {}", .{err});
         return;
