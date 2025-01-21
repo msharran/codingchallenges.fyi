@@ -28,7 +28,7 @@ pub fn init(allocator: std.mem.Allocator) !Server {
     const router = try Router.init(allocator);
 
     const opt = ThreadPool.Options{
-        .n_jobs = 20, // TODO: Make this configurable
+        .n_jobs = 64, // TODO: Make this configurable
         .allocator = allocator,
     };
     var pool = try allocator.create(ThreadPool);
@@ -89,6 +89,17 @@ fn handle_connection(self: *Server, connection: posix.socket_t) void {
     log.info("Client connected: {}", .{connection});
     defer log.info("Client connection closed: {}", .{connection});
 
+    // 2.5 second timeout
+    const timeout = posix.timeval{ .tv_sec = 2, .tv_usec = 500_000 };
+    posix.setsockopt(connection, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout)) catch |err| {
+        log.err("Failed to set receive timeout: {}", .{err});
+        return;
+    };
+    posix.setsockopt(connection, posix.SOL.SOCKET, posix.SO.SNDTIMEO, &std.mem.toBytes(timeout)) catch |err| {
+        log.err("Failed to set send timeout: {}", .{err});
+        return;
+    };
+
     var buf: [128]u8 = undefined;
     const read = posix.read(connection, &buf) catch |err| {
         log.err("Failed to read from client: {}", .{err});
@@ -109,7 +120,7 @@ fn handle_connection(self: *Server, connection: posix.socket_t) void {
     };
 
     const req = Request{ .message = msg, .dict = self.dict };
-    const resp_msg = try self.router.route(req);
+    const resp_msg = self.router.route(req);
 
     const raw_msg = resp.serialise(resp_msg) catch |err| {
         log.err("Failed to serialise message: {}", .{err});

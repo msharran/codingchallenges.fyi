@@ -56,7 +56,7 @@ pub fn deinit(self: *Router) void {
 /// Example:
 ///    ["PING"]
 ///    ["ECHO", "hello"]
-pub fn route(self: Router, req: command.Request) !Message {
+pub fn route(self: Router, req: command.Request) Message {
     if (req.message.type != .Array) {
         return Message.err("ERR bad request: expected array");
     }
