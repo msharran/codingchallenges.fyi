@@ -4,11 +4,17 @@ const std = @import("std");
 // declaratively construct a build graph that will be executed by an external
 // runner.
 pub fn build(b: *std.Build) void {
+    const linux_aarch64 = b.option(bool, "linux-aarch64", "Linux aarch 64 build") orelse false;
+
     // Standard target options allows the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
     // means any target is allowed, and the default is native. Other options
     // for restricting supported target set are available.
-    const target = b.standardTargetOptions(.{});
+
+    const target: std.Build.ResolvedTarget = if (linux_aarch64)
+        b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .linux })
+    else
+        b.standardTargetOptions(.{});
 
     // Standard optimization options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
