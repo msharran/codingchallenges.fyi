@@ -76,9 +76,10 @@ pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
         };
         errdefer posix.close(connection);
 
-        self.pool.spawn(handle_connection, .{ self, connection }) catch |err| {
-            log.err("Failed to spawn worker: {}", .{err});
-        };
+        self.handle_connection(connection);
+        // self.pool.spawn(handle_connection, .{ self, connection }) catch |err| {
+        //     log.err("Failed to spawn worker: {}", .{err});
+        // };
     }
 }
 

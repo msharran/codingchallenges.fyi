@@ -1,5 +1,13 @@
-.PHONY: run
+.PHONY: devpod docker 
 
-run:
-	zig build -Dlinux-aarch64=true \
-		&& docker run -v ./zig-out/bin/redis-server:/redis -p 6379:6379 -it ubuntu:latest /redis
+devpod:
+	devpod up --dotfiles https://github.com/msharran/.dotfiles --recreate zig
+
+docker:
+	zig build -Dtarget=aarch64-linux \
+	docker run --rm \
+	-v ./zig-out/bin/redis-server:/redis \
+	-p 6379:6379 \
+	--name redis \
+	-it ubuntu:latest /redis
+

@@ -13,6 +13,6 @@ pub fn main() !void {
 
     log.info("Server initialised", .{});
 
-    const address = try std.net.Address.parseIp("0.0.0.0", 6379);
+    const address = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, 6379);
     try server.listenAndServe(address);
 }
