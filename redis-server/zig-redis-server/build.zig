@@ -14,8 +14,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const xev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("xev", xev.module("xev"));
+    // const xev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
+    // exe.root_module.addImport("xev", xev.module("xev"));
 
     b.installArtifact(exe);
 

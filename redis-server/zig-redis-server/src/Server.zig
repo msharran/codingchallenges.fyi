@@ -87,7 +87,7 @@ fn handle_connection(self: *Server, connection: posix.socket_t) void {
     defer posix.close(connection);
 
     // 2.5 second timeout
-    const timeout = posix.timeval{ .tv_sec = 2, .tv_usec = 500_000 };
+    const timeout = posix.timeval{ .sec = 2, .usec = 500_000 };
     posix.setsockopt(connection, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout)) catch |err| {
         log.err("Failed to set receive timeout: {}", .{err});
         return;
