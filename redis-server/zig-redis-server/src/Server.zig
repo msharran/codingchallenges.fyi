@@ -86,17 +86,6 @@ pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
 fn handle_connection(self: *Server, connection: posix.socket_t) void {
     defer posix.close(connection);
 
-    // 2.5 second timeout
-    const timeout = posix.timeval{ .sec = 2, .usec = 500_000 };
-    posix.setsockopt(connection, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout)) catch |err| {
-        log.err("Failed to set receive timeout: {}", .{err});
-        return;
-    };
-    posix.setsockopt(connection, posix.SOL.SOCKET, posix.SO.SNDTIMEO, &std.mem.toBytes(timeout)) catch |err| {
-        log.err("Failed to set send timeout: {}", .{err});
-        return;
-    };
-
     var buf: [4028]u8 = undefined;
     const read = posix.read(connection, &buf) catch |err| {
         log.err("Failed to read from client: {}", .{err});
