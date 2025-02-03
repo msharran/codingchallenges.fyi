@@ -67,14 +67,14 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
     try server.listen(1);
 
     // Completions we need
-    // const completion = try self.allocator.create(xev.Completion);
     // defer self.allocator.destroy(completion);
-    var completion: xev.Completion = undefined;
 
     const userdata: ?*TcpServer = self;
 
     while (true) {
-        server.accept(&loop, &completion, TcpServer, userdata, (struct {
+        log.debug("accepting connection", .{});
+        const completion = try self.allocator.create(xev.Completion);
+        server.accept(&loop, completion, TcpServer, userdata, (struct {
             fn callback(
                 svr: ?*TcpServer,
                 l: *xev.Loop,
@@ -87,41 +87,49 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
                 // Receive
                 const recv_buf = svr.?.allocator.alloc(u8, 4068) catch unreachable; // FIXME: free me
 
-                server_conn.read(l, c, .{ .slice = recv_buf }, std.mem.Allocator, &svr.?.allocator, (struct {
+                server_conn.read(l, c, .{ .slice = recv_buf }, TcpServer, svr, (struct {
                     fn callback(
-                        ralloc: ?*std.mem.Allocator,
-                        il: *xev.Loop,
-                        ic: *xev.Completion,
-                        conn: TCP,
+                        rself: ?*TcpServer,
+                        rl: *xev.Loop,
+                        rc: *xev.Completion,
+                        rconn: TCP,
                         rbuf: xev.ReadBuffer,
                         r: TCP.ReadError!usize,
                     ) xev.CallbackAction {
-                        defer ralloc.?.free(rbuf.slice);
+                        defer rself.?.allocator.free(rbuf.slice);
                         const recv_len = r catch unreachable;
-                        // Send
-                        // const write_back_buf = "+PONG\r\n";
-                        const write_buf = ralloc.?.alloc(u8, recv_len) catch unreachable;
-                        @memcpy(write_buf, rbuf.slice[0..recv_len]);
-                        conn.write(il, ic, .{ .slice = write_buf }, std.mem.Allocator, ralloc, (struct {
+
+                        const resp = Resp.init(rself.?.allocator);
+                        defer resp.deinit();
+                        const msg = resp.deserialise(rbuf.slice[0..recv_len]) catch Resp.Message.nil();
+                        const req = Request{ .message = msg, .dict = rself.?.dict };
+                        const resp_msg = rself.?.router.route(req);
+                        const raw_msg = resp.serialise(resp_msg) catch "_\r\n";
+
+                        const write_buf = rself.?.allocator.alloc(u8, raw_msg.len) catch unreachable;
+                        @memcpy(write_buf, raw_msg);
+
+                        rconn.write(rl, rc, .{ .slice = write_buf }, TcpServer, rself, (struct {
                             fn callback(
-                                walloc: ?*std.mem.Allocator,
+                                wself: ?*TcpServer,
                                 wl: *xev.Loop,
                                 wc: *xev.Completion,
                                 wconn: TCP,
                                 wbuf: xev.WriteBuffer,
                                 _: TCP.WriteError!usize,
                             ) xev.CallbackAction {
-                                defer walloc.?.free(wbuf.slice);
+                                defer wself.?.allocator.free(wbuf.slice);
                                 // Close
-                                wconn.close(wl, wc, void, null, (struct {
+                                wconn.close(wl, wc, TcpServer, wself, (struct {
                                     fn callback(
-                                        _: ?*void,
+                                        cself: ?*TcpServer,
                                         _: *xev.Loop,
-                                        _: *xev.Completion,
+                                        cc: *xev.Completion,
                                         _: TCP,
                                         cr: TCP.CloseError!void,
                                     ) xev.CallbackAction {
                                         _ = cr catch unreachable;
+                                        cself.?.allocator.destroy(cc);
                                         return .disarm;
                                     }
                                 }).callback);
