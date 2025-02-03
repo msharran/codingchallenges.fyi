@@ -17,6 +17,9 @@ pub fn build(b: *std.Build) void {
     const xev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("xev", xev.module("xev"));
 
+    const uuid = b.dependency("uuid", .{ .target = target, .optimize = optimize });
+    exe.root_module.addImport("uuid", uuid.module("uuid"));
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);

@@ -1,6 +1,6 @@
 const std = @import("std");
 const log = std.log.scoped(.redis);
-const Server = @import("Server.zig");
+const Server = @import("TcpServer.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};

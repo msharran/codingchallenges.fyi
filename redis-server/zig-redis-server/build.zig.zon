@@ -27,6 +27,10 @@
             .url = "https://github.com/mitchellh/libxev/archive/aceef3d11efacd9d237c91632f930ed13a2834bf.tar.gz",
             .hash = "12205b2b47fe61a4cde3a45ee4b9cddee75897739dbc196d6396e117cb1ce28e1ad0",
         },
+        .uuid = .{
+            .url = "https://github.com/r4gus/uuid-zig/archive/refs/tags/0.3.0.tar.gz",
+            .hash = "12207920ff3fce69398afc959b252b8cd72ab55a6dbb251d71fa046a43d9a85bffe6",
+        },
     },
     .paths = .{
         "build.zig",
