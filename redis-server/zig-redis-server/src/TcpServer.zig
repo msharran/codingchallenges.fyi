@@ -14,6 +14,8 @@ const xev = @import("xev");
 const TCP = xev.TCP;
 const uuid = @import("uuid");
 
+const NTHREAD: usize = 10;
+
 /// router is responsible for handling the commands received by the server.
 router: Router,
 
@@ -34,7 +36,7 @@ pub fn init(allocator: std.mem.Allocator) !TcpServer {
     const router = try Router.init(allocator);
 
     const opt = ThreadPool.Options{
-        .n_jobs = 4, // TODO: Make this configurable
+        .n_jobs = NTHREAD, // TODO: Make this configurable
         .allocator = allocator,
     };
     var pool = try allocator.create(ThreadPool);
@@ -59,9 +61,6 @@ pub fn deinit(self: *TcpServer) void {
 }
 
 pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
-    var loop = try xev.Loop.init(.{});
-    defer loop.deinit();
-
     var server = try TCP.init(address);
     self.tcp_server = &server;
 
@@ -69,16 +68,24 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
     try server.bind(address);
     try server.listen(1);
 
-    const userdata: ?*TcpServer = self;
+    var i: usize = 0;
+    while (i < NTHREAD) : (i += 1) {
+        const s: ?*TcpServer = self;
+        try self.pool.spawn((struct {
+            fn job(svr: ?*TcpServer) void {
+                var loop = xev.Loop.init(.{}) catch unreachable;
+                defer loop.deinit();
+                // Allocate completion, reuse it in entire connection flow
+                // accept -> read -> write -> close (valid since we disarm each flow after exec).
+                // Then deallocate after connection close or at failure points
+                log.debug("accepting connection", .{});
+                const completion = svr.?.allocator.create(xev.Completion) catch unreachable;
+                svr.?.tcp_server.?.accept(&loop, completion, TcpServer, svr, connectionDidAccept);
 
-    // Allocate completion, reuse it in entire connection flow
-    // accept -> read -> write -> close (valid since we disarm each flow after exec).
-    // Then deallocate after connection close or at failure points
-    log.debug("accepting connection", .{});
-    const completion = try self.allocator.create(xev.Completion);
-    server.accept(&loop, completion, TcpServer, userdata, connectionDidAccept);
-
-    try loop.run(.until_done);
+                loop.run(.until_done) catch unreachable;
+            }
+        }).job, .{s});
+    }
 
     // var server_closed = false;
     // server.close(&loop, completion, bool, &server_closed, (struct {
