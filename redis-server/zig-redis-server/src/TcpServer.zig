@@ -25,7 +25,7 @@ dict: *Dictionary,
 /// pool is used to handle incoming connections concurrently.
 pool: *ThreadPool,
 
-tcp: ?*TCP = null,
+tcp_server: ?*TCP = null,
 
 /// init allocates memory for the server.
 /// Caller should call self.deinit to free the memory.
@@ -63,28 +63,22 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
     defer loop.deinit();
 
     var server = try TCP.init(address);
-    self.tcp = &server;
+    self.tcp_server = &server;
 
     // Bind and listen
     try server.bind(address);
     try server.listen(1);
 
-    // Completions we need
-    // defer self.allocator.destroy(completion);
-
     const userdata: ?*TcpServer = self;
 
-    while (true) {
-        log.debug("accepting connection", .{});
+    // Allocate completion, reuse it in entire connection flow
+    // accept -> read -> write -> close (valid since we disarm each flow after exec).
+    // Then deallocate after connection close or at failure points
+    log.debug("accepting connection", .{});
+    const completion = try self.allocator.create(xev.Completion);
+    server.accept(&loop, completion, TcpServer, userdata, connectionDidAccept);
 
-        // Allocate completion, reuse it in entire connection flow
-        // accept -> read -> write -> close (valid since we disarm each flow after exec).
-        // Then deallocate after connection close or at failure points
-        const completion = try self.allocator.create(xev.Completion);
-        server.accept(&loop, completion, TcpServer, userdata, connectionDidAccept);
-
-        try loop.run(.until_done);
-    }
+    try loop.run(.until_done);
 
     // var server_closed = false;
     // server.close(&loop, &completion, bool, &server_closed, (struct {
@@ -104,61 +98,6 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
     // try loop.run(.until_done);
 
     // log.debug("server_closed {}", .{server_closed});
-}
-
-/// handleConnection is reponsible for handling incoming connections.
-/// It reads from the client, deserialises the message, routes it to the appropriate handler,
-/// and writes the response back to the client.
-///
-/// Arguments:
-///     self: The server instance
-///     connection: The socket file descriptor for the client connection
-///
-/// Returns: void
-fn handleConnection(self: *TcpServer, connection: posix.socket_t) void {
-    defer posix.close(connection);
-
-    var buf: [4028]u8 = undefined;
-    const read = posix.read(connection, &buf) catch |err| {
-        log.err("Failed to read from client: {}", .{err});
-        return;
-    };
-
-    if (read == 0) {
-        log.info("Read 0 bytes from client, closing connection", .{});
-        return;
-    }
-
-    const resp = Resp.init(self.allocator);
-    defer resp.deinit();
-
-    const msg = resp.deserialise(buf[0..read]) catch |err| {
-        log.err("Failed to deserialise message: {}", .{err});
-        return;
-    };
-
-    const req = Request{ .message = msg, .dict = self.dict };
-    const resp_msg = self.router.route(req);
-
-    const raw_msg = resp.serialise(resp_msg) catch |err| {
-        log.err("Failed to serialise message: {}", .{err});
-        return;
-    };
-
-    writeAll(connection, raw_msg) catch |err| {
-        log.err("Failed to write to client: {}", .{err});
-    };
-}
-
-fn writeAll(socket: posix.socket_t, msg: []const u8) !void {
-    var pos: usize = 0;
-    while (pos < msg.len) {
-        const written = try posix.write(socket, msg[pos..]);
-        if (written == 0) {
-            return error.Closed;
-        }
-        pos += written;
-    }
 }
 
 // for every accepted connection, pass completion, conn id,
@@ -181,6 +120,14 @@ fn connectionDidAccept(
     result: TCP.AcceptError!TCP,
 ) xev.CallbackAction {
     const l = std_log.scoped(.connectionDidAccept);
+
+    l.debug("queueing new connection", .{});
+    const new_completion = self.?.allocator.create(xev.Completion) catch |err| {
+        l.err("failed to allocate mem for queueing new connection {}", .{err});
+        self.?.allocator.destroy(completion);
+        return .disarm;
+    };
+    self.?.tcp_server.?.accept(loop, new_completion, TcpServer, self, connectionDidAccept);
 
     var connection = result catch |err| {
         l.err("failed to accept, deallocating completion {}", .{err});
