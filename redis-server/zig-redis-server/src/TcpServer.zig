@@ -14,7 +14,7 @@ const xev = @import("xev");
 const TCP = xev.TCP;
 const uuid = @import("uuid");
 
-const NTHREAD: usize = 10;
+const NTHREAD: usize = 0;
 
 /// router is responsible for handling the commands received by the server.
 router: Router,
@@ -25,7 +25,7 @@ allocator: std.mem.Allocator,
 dict: *Dictionary,
 
 /// pool is used to handle incoming connections concurrently.
-pool: *ThreadPool,
+// pool: *ThreadPool,
 
 tcp_server: ?*TCP = null,
 
@@ -35,26 +35,26 @@ pub fn init(allocator: std.mem.Allocator) !TcpServer {
     const obj_store = try Dictionary.init(allocator);
     const router = try Router.init(allocator);
 
-    const opt = ThreadPool.Options{
-        .n_jobs = NTHREAD, // TODO: Make this configurable
-        .allocator = allocator,
-    };
-    var pool = try allocator.create(ThreadPool);
-    try pool.init(opt);
+    // const opt = ThreadPool.Options{
+    //     .n_jobs = NTHREAD, // TODO: Make this configurable
+    //     .allocator = allocator,
+    // };
+    // var pool = try allocator.create(ThreadPool);
+    // try pool.init(opt);
 
     return TcpServer{
         .allocator = allocator,
         .router = router,
         .dict = obj_store,
-        .pool = pool,
+        // .pool = pool,
     };
 }
 
 pub fn deinit(self: *TcpServer) void {
     defer std.debug.print("Server deinitialised\n", .{});
 
-    self.pool.deinit();
-    self.allocator.destroy(self.pool);
+    // self.pool.deinit();
+    // self.allocator.destroy(self.pool);
     self.dict.deinit();
     self.router.deinit();
     self.* = undefined;
@@ -68,24 +68,18 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
     try server.bind(address);
     try server.listen(1);
 
-    var i: usize = 0;
-    while (i < NTHREAD) : (i += 1) {
-        const s: ?*TcpServer = self;
-        try self.pool.spawn((struct {
-            fn job(svr: ?*TcpServer) void {
-                var loop = xev.Loop.init(.{}) catch unreachable;
-                defer loop.deinit();
-                // Allocate completion, reuse it in entire connection flow
-                // accept -> read -> write -> close (valid since we disarm each flow after exec).
-                // Then deallocate after connection close or at failure points
-                log.debug("accepting connection", .{});
-                const completion = svr.?.allocator.create(xev.Completion) catch unreachable;
-                svr.?.tcp_server.?.accept(&loop, completion, TcpServer, svr, connectionDidAccept);
+    var loop = xev.Loop.init(.{}) catch unreachable;
+    defer loop.deinit();
+    // Allocate completion, reuse it in entire connection flow
+    // accept -> read -> write -> close (valid since we disarm each flow after exec).
+    // Then deallocate after connection close or at failure points
+    log.info("accepting connection", .{});
+    const completion = self.allocator.create(xev.Completion) catch unreachable;
 
-                loop.run(.until_done) catch unreachable;
-            }
-        }).job, .{s});
-    }
+    const self_optional: ?*TcpServer = self;
+    self.tcp_server.?.accept(&loop, completion, TcpServer, self_optional, connectionDidAccept);
+
+    loop.run(.until_done) catch unreachable;
 
     // var server_closed = false;
     // server.close(&loop, completion, bool, &server_closed, (struct {
@@ -128,7 +122,7 @@ fn connectionDidAccept(
 ) xev.CallbackAction {
     const l = std_log.scoped(.connectionDidAccept);
 
-    l.debug("queueing new connection", .{});
+    l.info("queueing new connection", .{});
     const new_completion = self.?.allocator.create(xev.Completion) catch |err| {
         l.err("failed to allocate mem for queueing new connection {}", .{err});
         self.?.allocator.destroy(completion);
