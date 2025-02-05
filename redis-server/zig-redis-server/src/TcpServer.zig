@@ -25,6 +25,8 @@ dict: *Dictionary,
 /// pool is used to handle incoming connections concurrently.
 pool: *ThreadPool,
 
+tcp: ?*TCP = null,
+
 /// init allocates memory for the server.
 /// Caller should call self.deinit to free the memory.
 pub fn init(allocator: std.mem.Allocator) !TcpServer {
@@ -60,7 +62,8 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
     var loop = try xev.Loop.init(.{});
     defer loop.deinit();
 
-    const server = try TCP.init(address);
+    var server = try TCP.init(address);
+    self.tcp = &server;
 
     // Bind and listen
     try server.bind(address);
@@ -73,76 +76,12 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
 
     while (true) {
         log.debug("accepting connection", .{});
+
+        // Allocate completion, reuse it in entire connection flow
+        // accept -> read -> write -> close (valid since we disarm each flow after exec).
+        // Then deallocate after connection close or at failure points
         const completion = try self.allocator.create(xev.Completion);
-        server.accept(&loop, completion, TcpServer, userdata, (struct {
-            fn callback(
-                svr: ?*TcpServer,
-                l: *xev.Loop,
-                c: *xev.Completion,
-                accept_result: TCP.AcceptError!TCP,
-            ) xev.CallbackAction {
-                var server_conn = accept_result catch unreachable;
-
-                log.debug("accepted connection {}", .{server_conn});
-                // Receive
-                const recv_buf = svr.?.allocator.alloc(u8, 4068) catch unreachable; // FIXME: free me
-
-                server_conn.read(l, c, .{ .slice = recv_buf }, TcpServer, svr, (struct {
-                    fn callback(
-                        rself: ?*TcpServer,
-                        rl: *xev.Loop,
-                        rc: *xev.Completion,
-                        rconn: TCP,
-                        rbuf: xev.ReadBuffer,
-                        r: TCP.ReadError!usize,
-                    ) xev.CallbackAction {
-                        defer rself.?.allocator.free(rbuf.slice);
-                        const recv_len = r catch unreachable;
-
-                        const resp = Resp.init(rself.?.allocator);
-                        defer resp.deinit();
-                        const msg = resp.deserialise(rbuf.slice[0..recv_len]) catch Resp.Message.nil();
-                        const req = Request{ .message = msg, .dict = rself.?.dict };
-                        const resp_msg = rself.?.router.route(req);
-                        const raw_msg = resp.serialise(resp_msg) catch "_\r\n";
-
-                        const write_buf = rself.?.allocator.alloc(u8, raw_msg.len) catch unreachable;
-                        @memcpy(write_buf, raw_msg);
-
-                        rconn.write(rl, rc, .{ .slice = write_buf }, TcpServer, rself, (struct {
-                            fn callback(
-                                wself: ?*TcpServer,
-                                wl: *xev.Loop,
-                                wc: *xev.Completion,
-                                wconn: TCP,
-                                wbuf: xev.WriteBuffer,
-                                _: TCP.WriteError!usize,
-                            ) xev.CallbackAction {
-                                defer wself.?.allocator.free(wbuf.slice);
-                                // Close
-                                wconn.close(wl, wc, TcpServer, wself, (struct {
-                                    fn callback(
-                                        cself: ?*TcpServer,
-                                        _: *xev.Loop,
-                                        cc: *xev.Completion,
-                                        _: TCP,
-                                        cr: TCP.CloseError!void,
-                                    ) xev.CallbackAction {
-                                        _ = cr catch unreachable;
-                                        cself.?.allocator.destroy(cc);
-                                        return .disarm;
-                                    }
-                                }).callback);
-                                return .disarm;
-                            }
-                        }).callback);
-                        return .disarm;
-                    }
-                }).callback);
-
-                return .disarm;
-            }
-        }).callback);
+        server.accept(&loop, completion, TcpServer, userdata, connectionDidAccept);
 
         try loop.run(.until_done);
     }
@@ -235,221 +174,113 @@ fn writeAll(socket: posix.socket_t, msg: []const u8) !void {
 // deinit in read callback
 // repeat for write and close
 
-// const AcceptCtx = struct {
-//     connection_id: [36]u8,
-//     allocator: std.mem.Allocator,
+fn connectionDidAccept(
+    self: ?*TcpServer,
+    loop: *xev.Loop,
+    completion: *xev.Completion,
+    result: TCP.AcceptError!TCP,
+) xev.CallbackAction {
+    const l = std_log.scoped(.connectionDidAccept);
 
-//     // allocate them in heap
-//     accept_completion: *xev.Completion,
+    var connection = result catch |err| {
+        l.err("failed to accept, deallocating completion {}", .{err});
+        self.?.allocator.destroy(completion);
+        return .disarm;
+    };
 
-//     pub fn init(allocator: std.mem.Allocator, urn: [36]u8) !AcceptCtx {
-//         log.debug("AcceptCtx init for connection {s}", .{urn});
-//         return AcceptCtx{
-//             .connection_id = urn,
-//             .allocator = allocator,
-//             .accept_completion = try allocator.create(xev.Completion),
-//         };
-//     }
+    log.debug("accepted connection {}", .{connection});
+    const recv_buf = self.?.allocator.alloc(u8, 4068) catch |err| {
+        l.err("failed to allocate recv_buf memory, closing connection: {}", .{err});
+        connection.close(loop, completion, TcpServer, self, connectionDidClose);
+        return .disarm;
+    };
 
-//     pub fn deinit(self: *AcceptCtx) void {
-//         log.debug("AcceptCtx deinit for connection {s}", .{self.connection_id});
-//         self.allocator.destroy(self.accept_completion);
-//         self.* = undefined;
-//     }
-// };
+    connection.read(loop, completion, .{ .slice = recv_buf }, TcpServer, self, connectionDidRead);
+    return .disarm;
+}
 
-// const ReadCtx = struct {
-//     connection_id: [36]u8,
-//     allocator: std.mem.Allocator,
-//     read_completion: *xev.Completion,
-//     buf: [4028]u8,
+fn connectionDidRead(
+    self: ?*TcpServer,
+    loop: *xev.Loop,
+    completion: *xev.Completion,
+    connection: TCP,
+    read_buf: xev.ReadBuffer,
+    result: TCP.ReadError!usize,
+) xev.CallbackAction {
+    defer self.?.allocator.free(read_buf.slice);
 
-//     pub fn init(allocator: std.mem.Allocator, urn: [36]u8) !ReadCtx {
-//         log.debug("ReadCtx init for connection {s}", .{urn});
-//         return ReadCtx{
-//             .connection_id = urn,
-//             .allocator = allocator,
-//             .read_completion = try allocator.create(xev.Completion),
-//             .buf = try allocator.alloc(u8, 4028),
-//         };
-//     }
+    const l = std_log.scoped(.connectionDidRead);
 
-//     pub fn deinit(self: *ReadCtx) void {
-//         log.debug("ReadCtx deinit for connection {s}", .{self.connection_id});
-//         self.allocator.destroy(self.read_completion);
-//         self.allocator.free(self.buf);
-//         self.* = undefined;
-//     }
-// };
+    const recv_len = result catch |err| {
+        l.err("failed to read, closing connection: {}", .{err});
+        connection.close(loop, completion, TcpServer, self, connectionDidClose);
+        return .disarm;
+    };
 
-// const WriteCtx = struct {
-//     connection_id: [36]u8,
-//     allocator: std.mem.Allocator,
-//     write_completion: *xev.Completion,
-//     buf: []u8,
+    const resp = Resp.init(self.?.allocator);
+    defer resp.deinit();
 
-//     pub fn init(allocator: std.mem.Allocator, urn: [36]u8, buf: []u8) !WriteCtx {
-//         log.debug("WriteCtx init for connection {s}", .{urn});
-//         return WriteCtx{
-//             .connection_id = urn,
-//             .allocator = allocator,
-//             .write_completion = try allocator.create(xev.Completion),
-//             .buf = buf,
-//         };
-//     }
+    const msg = resp.deserialise(read_buf.slice[0..recv_len]) catch |err| {
+        l.err("failed to deserialise, closing connection: {}", .{err});
+        connection.close(loop, completion, TcpServer, self, connectionDidClose);
+        return .disarm;
+    };
 
-//     pub fn deinit(self: *WriteCtx) void {
-//         log.debug("WriteCtx deinit for connection {s}", .{self.connection_id});
-//         self.allocator.destroy(self.write_completion);
-//         self.* = undefined;
-//     }
-// };
+    const resp_msg = self.?.router.route(Request{ .message = msg, .dict = self.?.dict });
 
-// const CloseCtx = struct {
-//     connection_id: [36]u8,
-//     allocator: std.mem.Allocator,
-//     close_completion: *xev.Completion,
+    const raw_msg = resp.serialise(resp_msg) catch |err| {
+        l.err("failed to serialise, closing connection: {}", .{err});
+        connection.close(loop, completion, TcpServer, self, connectionDidClose);
+        return .disarm;
+    };
 
-//     pub fn init(allocator: std.mem.Allocator, urn: [36]u8) !CloseCtx {
-//         log.debug("CloseCtx init for connection {s}", .{urn});
-//         return CloseCtx{
-//             .connection_id = urn,
-//             .allocator = allocator,
-//             .close_completion = try allocator.create(xev.Completion),
-//         };
-//     }
+    const write_buf = self.?.allocator.alloc(u8, raw_msg.len) catch |err| {
+        l.err("failed to allocate write buffer, closing connection: {}", .{err});
+        connection.close(loop, completion, TcpServer, self, connectionDidClose);
+        return .disarm;
+    };
 
-//     pub fn deinit(self: *CloseCtx) void {
-//         log.debug("CloseCtx deinit for connection {s}", .{self.connection_id});
-//         self.allocator.destroy(self.close_completion);
-//         self.* = undefined;
-//     }
-// };
+    @memcpy(write_buf, raw_msg);
+    connection.write(loop, completion, .{ .slice = write_buf }, TcpServer, self, connectionDidWrite);
+    return .disarm;
+}
 
-// fn acceptCallback(
-//     a_ctx: ?*AcceptCtx,
-//     loop: *xev.Loop,
-//     _: *xev.Completion,
-//     result: xev.TCP.AcceptError!xev.TCP,
-// ) xev.CallbackAction {
-//     const l = std_log.scoped(.event_accept);
-//     l.debug("accepted connection {?s}", .{a_ctx.?.*.connection_id});
-//     defer a_ctx.?.deinit();
+fn connectionDidWrite(
+    self: ?*TcpServer,
+    loop: *xev.Loop,
+    completion: *xev.Completion,
+    connection: TCP,
+    write_buf: xev.WriteBuffer,
+    result: TCP.WriteError!usize,
+) xev.CallbackAction {
+    defer self.?.allocator.free(write_buf.slice);
 
-//     // Handle accept errors
-//     var connection = result catch |err| {
-//         l.err("result err: {}", .{err});
-//         return .disarm;
-//     };
+    const l = std_log.scoped(.connectionDidWrite);
+    const written = result catch |err| {
+        l.err("failed to write, closing connection: {}", .{err});
+        connection.close(loop, completion, TcpServer, self, connectionDidClose);
+        return .disarm;
+    };
 
-//     connection.read(
-//         loop,
-//         a_ctx.?.read_completion,
-//         .{ .slice = a_ctx.?.*.read_buf },
-//         AcceptCtx,
-//         a_ctx,
-//         readCallback,
-//     );
+    l.debug("wrote {d}, closing connection", .{written});
+    connection.close(loop, completion, TcpServer, self, connectionDidClose);
+    return .disarm;
+}
 
-//     // Accept loop
+fn connectionDidClose(
+    self: ?*TcpServer,
+    _: *xev.Loop,
+    completion: *xev.Completion,
+    _: TCP,
+    result: TCP.CloseError!void,
+) xev.CallbackAction {
+    self.?.allocator.destroy(completion);
 
-//     // const id = uuid.v7.new();
-//     // const urn = uuid.urn.serialize(id);
-//     // var ctx_next = Context.init(ctx.?.allocator, urn) catch |err| {
-//     //     l.err("result err: {}", .{err});
-//     //     ctx.?.deinit();
-//     //     return .disarm;
-//     // };
-
-//     // log.info("Waiting for incoming connections", .{});
-//     // tcp.accept(loop, ctx_next.accept_completion, Context, &ctx_next, acceptCallback);
-
-//     return .disarm;
-// }
-
-// fn readCallback(
-//     ctx: ?*AcceptCtx,
-//     loop: *xev.Loop,
-//     _: *xev.Completion,
-//     tcp: xev.TCP,
-//     _: xev.ReadBuffer,
-//     result: xev.TCP.ReadError!usize,
-// ) xev.CallbackAction {
-//     const l = std_log.scoped(.event_read);
-//     l.debug("connection_id={?s}", .{ctx.?.*.connection_id});
-
-//     // Handle read errors
-//     const bytes_read = result catch |err| {
-//         l.err("read error, closing connection: {}", .{err});
-//         tcp.close(loop, ctx.?.close_completion, AcceptCtx, ctx, closeCallback);
-//         return .disarm;
-//     };
-
-//     // Check for EOF
-//     if (bytes_read == 0) {
-//         l.err("EOF during read, closing connection", .{});
-//         tcp.close(loop, ctx.?.close_completion, AcceptCtx, ctx, closeCallback);
-//         return .disarm;
-//     }
-
-//     // Write PONG response
-//     const write_buf = "+PONG\r\n";
-//     l.debug("sending PONG response", .{});
-
-//     tcp.write(
-//         loop,
-//         ctx.?.write_completion,
-//         .{ .slice = write_buf },
-//         AcceptCtx,
-//         ctx,
-//         writeCallback,
-//     );
-
-//     // will be rearmed in acceptCallback
-//     return .disarm;
-// }
-
-// fn writeCallback(
-//     ctx: ?*AcceptCtx,
-//     loop: *xev.Loop,
-//     _: *xev.Completion,
-//     tcp: xev.TCP,
-//     write_buf: xev.WriteBuffer,
-//     result: xev.TCP.WriteError!usize,
-// ) xev.CallbackAction {
-//     const l = std_log.scoped(.event_write);
-//     l.debug("connection_id={?s} ", .{ctx.?.*.connection_id});
-
-//     // Handle write errors
-//     const written = result catch |err| {
-//         l.err("Write error, closing conn: {}", .{err});
-//         tcp.close(loop, ctx.?.close_completion, AcceptCtx, ctx, closeCallback);
-//         return .disarm;
-//     };
-
-//     l.debug("Wrote data={s}, len={d}, closing connection", .{ write_buf.slice, written });
-
-//     // Since we have successfully written to the connection, we can close it
-//     tcp.close(loop, ctx.?.close_completion, AcceptCtx, ctx, closeCallback);
-
-//     return .disarm;
-// }
-
-// fn closeCallback(
-//     ctx: ?*AcceptCtx,
-//     _: *xev.Loop,
-//     _: *xev.Completion,
-//     _: xev.TCP,
-//     result: xev.TCP.CloseError!void,
-// ) xev.CallbackAction {
-//     const l = std_log.scoped(.event_close);
-//     l.debug("connection_id={?s}", .{ctx.?.*.connection_id});
-
-//     if (result) {} else |err| {
-//         l.err("Close error: {}", .{err});
-//     }
-
-//     l.debug("connection closed, deallocating memory", .{});
-//     ctx.?.deinit();
-//     return .disarm;
-// }
+    const l = std_log.scoped(.connectionDidClose);
+    if (result) {
+        l.debug("successfully closed connection", .{});
+    } else |err| {
+        l.err("failed to close connection: {}", .{err});
+    }
+    return .disarm;
+}
