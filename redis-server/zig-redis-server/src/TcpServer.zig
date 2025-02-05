@@ -165,28 +165,23 @@ fn connectionDidRead(
 
     const l = std_log.scoped(.connectionDidRead);
 
-    const recv_len = result catch |err| {
-        l.err("failed to read, closing connection: {}", .{err});
-        connection.close(loop, completion, TcpServer, self, connectionDidClose);
-        return .disarm;
+    const recv_len = if (result) |len| len else |err| switch (err) {
+        error.EOF => 0,
+        else => {
+            l.err("failed to read, closing connection: {}", .{err});
+            connection.close(loop, completion, TcpServer, self, connectionDidClose);
+            return .disarm;
+        },
     };
 
     var resp = Resp.init(self.?.allocator);
     defer resp.deinit();
 
-    const msg = resp.deserialise(read_buf.slice[0..recv_len]) catch |err| {
-        l.err("failed to deserialise, closing connection: {}", .{err});
-        connection.close(loop, completion, TcpServer, self, connectionDidClose);
-        return .disarm;
-    };
+    const msg = resp.deserialise(read_buf.slice[0..recv_len]) catch Resp.Message.err("failed to deserialise");
 
     const resp_msg = self.?.router.route(Request{ .message = msg, .dict = self.?.dict });
 
-    const raw_msg = resp.serialise(resp_msg) catch |err| {
-        l.err("failed to serialise, closing connection: {}", .{err});
-        connection.close(loop, completion, TcpServer, self, connectionDidClose);
-        return .disarm;
-    };
+    const raw_msg = resp.serialise(resp_msg) catch "-Err: failed to deserialise\r\n";
 
     const write_buf = self.?.allocator.alloc(u8, raw_msg.len) catch |err| {
         l.err("failed to allocate write buffer, closing connection: {}", .{err});
