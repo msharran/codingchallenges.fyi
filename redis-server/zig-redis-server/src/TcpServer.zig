@@ -81,7 +81,7 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
     try loop.run(.until_done);
 
     // var server_closed = false;
-    // server.close(&loop, &completion, bool, &server_closed, (struct {
+    // server.close(&loop, completion, bool, &server_closed, (struct {
     //     fn callback(
     //         ud: ?*bool,
     //         _: *xev.Loop,
@@ -97,7 +97,7 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
 
     // try loop.run(.until_done);
 
-    // log.debug("server_closed {}", .{server_closed});
+    // log.info("server_closed {}", .{server_closed});
 }
 
 // for every accepted connection, pass completion, conn id,
@@ -164,7 +164,7 @@ fn connectionDidRead(
         return .disarm;
     };
 
-    const resp = Resp.init(self.?.allocator);
+    var resp = Resp.init(self.?.allocator);
     defer resp.deinit();
 
     const msg = resp.deserialise(read_buf.slice[0..recv_len]) catch |err| {

@@ -17,11 +17,10 @@ comptime {
 arena: std.heap.ArenaAllocator,
 
 pub fn init(allocator: std.mem.Allocator) Resp {
-    const arena = std.heap.ArenaAllocator.init(allocator);
-    return Resp{ .arena = arena };
+    return Resp{ .arena = std.heap.ArenaAllocator.init(allocator) };
 }
 
-pub fn deinit(self: Resp) void {
+pub fn deinit(self: *Resp) void {
     self.arena.deinit();
 }
 
@@ -107,7 +106,7 @@ pub const Message = struct {
     }
 };
 
-pub fn deserialise(self: Resp, raw: []const u8) !Message {
+pub fn deserialise(self: *Resp, raw: []const u8) !Message {
     if (raw.len == 0) {
         return error.EmptyRequest;
     }
@@ -145,8 +144,7 @@ pub fn deserialise(self: Resp, raw: []const u8) !Message {
             const raw_msgs = try self.getArrayItems(raw);
 
             // init an array list of messages
-            var arena = self.arena;
-            var list = try std.ArrayList(Message).initCapacity(arena.allocator(), raw_msgs.len);
+            var list = try std.ArrayList(Message).initCapacity(self.arena.allocator(), raw_msgs.len);
 
             for (raw_msgs) |msg| {
                 const m = try self.deserialise(msg);
@@ -163,7 +161,7 @@ pub fn deserialise(self: Resp, raw: []const u8) !Message {
 /// e.g. "*2\r\n$4\r\nECHO\r\n$5\r\nhello\r\n"
 /// item 1: "$4\r\nECHO\r\n" => "ECHO\r\n"
 /// item 2: "$5\r\nhello\r\n" => "hello\r\n"
-fn getArrayItems(self: Resp, raw: []const u8) ![][]u8 {
+fn getArrayItems(self: *Resp, raw: []const u8) ![][]u8 {
     var parts = std.mem.splitSequence(u8, raw, CRLF);
     const arrlenbytes = parts.first();
     if (arrlenbytes.len != 2) {
@@ -172,9 +170,7 @@ fn getArrayItems(self: Resp, raw: []const u8) ![][]u8 {
 
     const arr_len = try std.fmt.parseInt(usize, arrlenbytes[1..], 10);
 
-    var arena = self.arena;
-
-    var commands = try std.ArrayList([]u8).initCapacity(arena.allocator(), arr_len);
+    var commands = try std.ArrayList([]u8).initCapacity(self.arena.allocator(), arr_len);
 
     var cmd: ?std.ArrayList(u8) = null;
     while (parts.next()) |part| {
@@ -191,7 +187,7 @@ fn getArrayItems(self: Resp, raw: []const u8) ![][]u8 {
             // Use that length to set the capacity of the array list
             const item_len_bytes = part[1..];
             const item_len = std.fmt.parseInt(usize, item_len_bytes, 10) catch 0;
-            cmd = try std.ArrayList(u8).initCapacity(arena.allocator(), item_len);
+            cmd = try std.ArrayList(u8).initCapacity(self.arena.allocator(), item_len);
 
             try cmd.?.appendSlice(part);
             try cmd.?.appendSlice(CRLF);
@@ -219,17 +215,16 @@ fn getArrayItems(self: Resp, raw: []const u8) ![][]u8 {
     return s;
 }
 
-pub fn serialise(self: Resp, m: Message) ![]u8 {
+pub fn serialise(self: *Resp, m: Message) ![]u8 {
     const data_type = try m.type.toChar();
     const content = m.value;
 
-    var arena = self.arena;
     var buf: []u8 = undefined;
     switch (m.type) {
         .SimpleString, .Error, .Integer, .Nil => {
-            var a = arena.allocator();
+            var a = self.arena.allocator();
             buf = try a.alloc(u8, 1 + content.single.len + CRLF_LEN); // data_type + content + crlf
-            errdefer a.free(buf);
+            errdefer self.arena.deinit();
             _ = try std.fmt.bufPrint(buf, "{c}{s}{s}", .{ data_type, content.single, CRLF });
         },
         .BulkString => {
@@ -241,9 +236,9 @@ pub fn serialise(self: Resp, m: Message) ![]u8 {
             var content_len_buf: [128]u8 = undefined;
             const content_len = try std.fmt.bufPrint(&content_len_buf, "{d}", .{content.single.len});
 
-            var a = arena.allocator();
+            var a = self.arena.allocator();
             buf = try a.alloc(u8, 1 + content_len.len + CRLF_LEN + content.single.len + CRLF_LEN);
-            errdefer a.free(buf);
+            errdefer self.arena.deinit();
             _ = try std.fmt.bufPrint(buf, "{c}{s}{s}{s}{s}", .{ data_type, content_len, CRLF, content.single, CRLF });
         },
         else => return error.UnsupportedDataType,
