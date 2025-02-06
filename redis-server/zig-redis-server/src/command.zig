@@ -43,6 +43,12 @@ pub fn set(r: Request) Message {
     return Message.simpleString("OK");
 }
 
+// my debug function
+pub fn printall(r: Request) Message {
+    r.dict.printAll();
+    return Message.nil();
+}
+
 pub fn get(r: Request) Message {
     const items = r.message.value.list.items;
     if (items.len < 2) {

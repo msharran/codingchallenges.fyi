@@ -74,13 +74,14 @@ pub fn getString(self: *Dictionary, key: []const u8) !?[]const u8 {
 }
 
 pub fn printAll(self: Dictionary) void {
-    self.rwlock.lockShared();
-    defer self.rwlock.unlockShared();
+    // self.rwlock.lockShared();
+    // defer self.rwlock.unlockShared();
 
+    const l = std.log.scoped(.print);
     var iter = self.entries.iterator();
     while (iter.next()) |kv| {
         const k = kv.key_ptr.*;
         const v = kv.value_ptr.*;
-        log.debug("key: {s}, value: {}", .{ k, v });
+        l.info("key: {s}, value: {}", .{ k, v });
     }
 }
