@@ -48,6 +48,8 @@ pub fn deinit(self: *Dictionary) void {
     while (iter.next()) |kv| {
         const key_p = kv.key_ptr.*;
         self.allocator.free(key_p);
+        const val_p = kv.value_ptr.*.string;
+        self.allocator.free(val_p);
     }
     self.entries.deinit();
 
@@ -59,7 +61,8 @@ pub fn putString(self: *Dictionary, key: []const u8, value: []const u8) !void {
     defer self.rwlock.unlock();
 
     const key_p = try self.allocator.dupe(u8, key);
-    const val = Value{ .string = value };
+    const val_p = try self.allocator.dupe(u8, value);
+    const val = Value{ .string = val_p };
     try self.entries.put(key_p, val);
 }
 
@@ -82,6 +85,6 @@ pub fn printAll(self: Dictionary) void {
     while (iter.next()) |kv| {
         const k = kv.key_ptr.*;
         const v = kv.value_ptr.*;
-        l.info("key: {s}, value: {}", .{ k, v });
+        l.info("key: {s}, value: {s}", .{ k, v.string });
     }
 }

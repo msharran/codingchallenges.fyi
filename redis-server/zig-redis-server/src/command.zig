@@ -24,6 +24,8 @@ pub const Request = struct {
 
     pub fn deinit(self: *Request) void {
         self.arena.deinit();
+        self.message = undefined;
+        self.* = undefined;
     }
 };
 

@@ -1,7 +1,9 @@
 const std = @import("std");
 const log = std.log.scoped(.redis);
-const Server = @import("TcpServer.zig");
+const tcp = @import("tcp.zig");
 
+// uncomment the following lines for log level INFO
+//
 // pub const std_options = .{
 //     // Set the log level to info
 //     .log_level = .info,
@@ -13,7 +15,7 @@ pub fn main() !void {
         const check = gpa.deinit();
         std.debug.print("Memory leak check = {}", .{check});
     }
-    var server = try Server.init(gpa.allocator());
+    var server = try tcp.Server.init(gpa.allocator());
     defer server.deinit();
 
     log.info("Server initialised", .{});
