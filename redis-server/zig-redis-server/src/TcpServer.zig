@@ -8,6 +8,7 @@ const TcpServer = @This();
 const Dictionary = @import("Dictionary.zig");
 const Router = @import("Router.zig");
 const Resp = @import("Resp.zig");
+const Message = Resp.Message;
 const Request = @import("command.zig").Request;
 const ThreadPool = xev.ThreadPool;
 const Task = xev.ThreadPool.Task;
@@ -184,8 +185,8 @@ fn handleConnection(self: *TcpServer, ctx: *ConnectionCtx) void {
     l.debug("handling connection", .{});
 
     // 2.5 second timeout
-    // const timeout = posix.timeval{ .tv_sec = 2, .tv_usec = 500_000 };
-    const timeout = posix.timeval{ .tv_sec = 0, .tv_usec = 500_000 };
+    const timeout = posix.timeval{ .tv_sec = 2, .tv_usec = 500_000 };
+    // const timeout = posix.timeval{ .tv_sec = 0, .tv_usec = 500_000 };
     posix.setsockopt(ctx.connection, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout)) catch |err| {
         l.err("Failed to set receive timeout: {}", .{err});
         return;
@@ -204,19 +205,15 @@ fn handleConnection(self: *TcpServer, ctx: *ConnectionCtx) void {
     var resp = Resp.init(self.allocator);
     defer resp.deinit();
 
-    const msg = resp.deserialise(buf[0..read]) catch |err| {
-        l.err("Failed to deserialise message: {}", .{err});
-        return;
-    };
+    const msg = if (read == 0)
+        Message.err("empty request")
+    else
+        resp.deserialise(buf[0..read]) catch Message.err("failed to deserialise");
 
     const req = Request{ .message = msg, .dict = self.dict };
     const resp_msg = self.router.route(req);
 
-    const raw_msg = resp.serialise(resp_msg) catch |err| {
-        l.err("Failed to serialise message: {}", .{err});
-        return;
-    };
-
+    const raw_msg = resp.serialise(resp_msg) catch "-Err failed to serialise\r\n";
     writeAll(ctx.connection, raw_msg) catch |err| {
         l.err("Failed to write to client: {}", .{err});
     };
