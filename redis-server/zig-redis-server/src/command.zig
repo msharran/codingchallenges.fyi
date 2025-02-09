@@ -10,6 +10,21 @@ pub const CommandFn = *const fn (Request) Message;
 pub const Request = struct {
     message: Message,
     dict: *Dictionary,
+
+    // used for list type of response
+    arena: *std.heap.ArenaAllocator,
+
+    pub fn init(arena: *std.heap.ArenaAllocator, m: Message, d: *Dictionary) Request {
+        return Request{
+            .message = m,
+            .dict = d,
+            .arena = arena,
+        };
+    }
+
+    pub fn deinit(self: *Request) void {
+        self.arena.deinit();
+    }
 };
 
 pub fn ping(_: Request) Message {
@@ -67,6 +82,46 @@ pub fn get(r: Request) Message {
     }
 
     return Message.bulkString(value.?);
+}
+
+pub fn config(r: Request) Message {
+    const items = r.message.value.list.items;
+    if (items.len < 3) {
+        return Message.err("ERR wrong number of arguments for CONFIG GET");
+    }
+
+    // Check if it's a GET command
+    const subcommand = items[1].value.single;
+    if (!std.mem.eql(u8, subcommand, "GET")) {
+        return Message.err("ERR unknown subcommand. Only GET is supported");
+    }
+
+    const param = items[2].value.single;
+
+    // Create array list for response using the request's arena allocator
+    var response_list = std.ArrayList(Message).init(r.arena.allocator());
+
+    // Handle different config parameters
+    if (std.mem.eql(u8, param, "save")) {
+        // Add key
+        response_list.append(Message.bulkString("save")) catch
+            return Message.err("ERR allocation failed");
+        // Add value
+        response_list.append(Message.bulkString("900 1 300 10")) catch
+            return Message.err("ERR allocation failed");
+        return Message.initList(.Array, response_list);
+    } else if (std.mem.eql(u8, param, "appendonly")) {
+        // Add key
+        response_list.append(Message.bulkString("appendonly")) catch
+            return Message.err("ERR allocation failed");
+        // Add value
+        response_list.append(Message.bulkString("no")) catch
+            return Message.err("ERR allocation failed");
+        return Message.initList(.Array, response_list);
+    } else {
+        // For unknown parameters, return empty array
+        return Message.initList(.Array, response_list);
+    }
 }
 
 test "set command" {

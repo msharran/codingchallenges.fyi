@@ -204,13 +204,6 @@ fn getArrayItems(self: *Resp, raw: []const u8) ![][]u8 {
         try commands.append(try c.toOwnedSlice());
     }
 
-    // if (arr_len != commands.items.len) {
-    //     log.err("Array length mismatch: expected {d}, got {d}", .{ arr_len, commands.items.len });
-    //     for (commands.items) |c| {
-    //         log.err("command = {s}", .{c});
-    //     }
-    //     return error.ArrayLengthMismatch;
-    // }
     const s = try commands.toOwnedSlice();
     return s;
 }
@@ -241,9 +234,62 @@ pub fn serialise(self: *Resp, m: Message) ![]u8 {
             errdefer self.arena.deinit();
             _ = try std.fmt.bufPrint(buf, "{c}{s}{s}{s}{s}", .{ data_type, content_len, CRLF, content.single, CRLF });
         },
-        else => return error.UnsupportedDataType,
+        .Array => {
+            // First calculate total size needed
+            var total_size: usize = 0;
+
+            // Size for array length (*<len>\r\n)
+            var arr_len_buf: [128]u8 = undefined;
+            const arr_len_str = try std.fmt.bufPrint(&arr_len_buf, "{d}", .{content.list.items.len});
+            total_size += 1 + arr_len_str.len + CRLF_LEN;
+
+            // Calculate size for each element
+            var element_sizes = std.ArrayList([]u8).init(self.arena.allocator());
+            defer element_sizes.deinit();
+
+            for (content.list.items) |item| {
+                const serialized = try self.serialise(item);
+                try element_sizes.append(serialized);
+                total_size += serialized.len;
+            }
+
+            // Allocate buffer and write data
+            var a = self.arena.allocator();
+            buf = try a.alloc(u8, total_size);
+            errdefer self.arena.deinit();
+
+            // Write array header
+            var pos: usize = 0;
+            _ = try std.fmt.bufPrint(buf[pos .. pos + 1 + arr_len_str.len + CRLF_LEN], "{c}{s}{s}", .{ data_type, arr_len_str, CRLF });
+            pos += 1 + arr_len_str.len + CRLF_LEN;
+
+            // Write elements
+            for (element_sizes.items) |element| {
+                @memcpy(buf[pos .. pos + element.len], element);
+                pos += element.len;
+            }
+        },
     }
     return buf;
+}
+
+test "serialise array" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var resp = Resp.init(std.testing.allocator);
+    defer resp.deinit();
+
+    var list = std.ArrayList(Message).init(arena.allocator());
+    try list.append(Message.bulkString("ECHO"));
+    try list.append(Message.bulkString("hello"));
+    try list.append(Message.integer("123"));
+
+    const msg = Message.initList(.Array, list);
+    const got = try resp.serialise(msg);
+
+    const want = "*3\r\n$4\r\nECHO\r\n$5\r\nhello\r\n:123\r\n";
+    try std.testing.expectEqualStrings(want, got);
 }
 
 test "serialise simple string" {

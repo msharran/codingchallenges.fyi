@@ -17,8 +17,6 @@ const xev = @import("xev");
 const TCP = xev.TCP;
 // const uuid = @import("uuid");
 
-const NTHREAD: usize = 20;
-
 /// router is responsible for handling the commands received by the server.
 router: Router,
 
@@ -47,7 +45,7 @@ pub fn init(allocator: std.mem.Allocator) !TcpServer {
 }
 
 pub fn deinit(self: *TcpServer) void {
-    defer std.debug.print("Server deinitialised\n", .{});
+    defer log.info("Server deinitialised", .{});
 
     self.dict.deinit();
     self.router.deinit();
@@ -128,11 +126,6 @@ fn connectionDidAccept(
         return .disarm;
     };
 
-    // self.?.pool.spawn(handleConnection, .{ self.?, connection.fd }) catch unreachable;
-    // const task = ThreadPool.Task
-    // const batch = ThreadPool.Batch.from(task);
-    // self.?.pool.schedule
-
     // create connection context to schedule in the thread pool
     // it's associated memory will be deallocated when connection is closed
     const conn_ctx = ConnectionCtx.init(self.?, connection.fd) catch |err| {
@@ -184,17 +177,17 @@ fn handleConnection(self: *TcpServer, ctx: *ConnectionCtx) void {
     const l = std_log.scoped(.handleConnection);
     l.debug("handling connection", .{});
 
-    // 2.5 second timeout
-    const timeout = posix.timeval{ .tv_sec = 2, .tv_usec = 500_000 };
-    // const timeout = posix.timeval{ .tv_sec = 0, .tv_usec = 500_000 };
-    posix.setsockopt(ctx.connection, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout)) catch |err| {
-        l.err("Failed to set receive timeout: {}", .{err});
-        return;
-    };
-    posix.setsockopt(ctx.connection, posix.SOL.SOCKET, posix.SO.SNDTIMEO, &std.mem.toBytes(timeout)) catch |err| {
-        l.err("Failed to set send timeout: {}", .{err});
-        return;
-    };
+    // // 2.5 second timeout
+    // const timeout = posix.timeval{ .tv_sec = 2, .tv_usec = 500_000 };
+    // // const timeout = posix.timeval{ .tv_sec = 0, .tv_usec = 500_000 };
+    // posix.setsockopt(ctx.connection, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout)) catch |err| {
+    //     l.err("Failed to set receive timeout: {}", .{err});
+    //     return;
+    // };
+    // posix.setsockopt(ctx.connection, posix.SOL.SOCKET, posix.SO.SNDTIMEO, &std.mem.toBytes(timeout)) catch |err| {
+    //     l.err("Failed to set send timeout: {}", .{err});
+    //     return;
+    // };
 
     var buf: [4028]u8 = undefined;
     const read = posix.read(ctx.connection, &buf) catch |err| {
@@ -210,7 +203,10 @@ fn handleConnection(self: *TcpServer, ctx: *ConnectionCtx) void {
     else
         resp.deserialise(buf[0..read]) catch Message.err("failed to deserialise");
 
-    const req = Request{ .message = msg, .dict = self.dict };
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    var req = Request.init(&arena, msg, self.dict);
+    defer req.deinit();
+
     const resp_msg = self.router.route(req);
 
     const raw_msg = resp.serialise(resp_msg) catch "-Err failed to serialise\r\n";

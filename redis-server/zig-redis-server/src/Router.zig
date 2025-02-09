@@ -39,6 +39,7 @@ fn registerRoutes(self: *Router) !void {
         .{ .command = "SET", .handler = command.set },
         .{ .command = "GET", .handler = command.get },
         .{ .command = "PRINTALL", .handler = command.printall },
+        .{ .command = "CONFIG", .handler = command.config },
     };
     for (routes) |r| {
         try self.routes.put(r.command, r.handler);
