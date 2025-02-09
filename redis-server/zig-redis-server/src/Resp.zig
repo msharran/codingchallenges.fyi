@@ -108,7 +108,7 @@ pub const Message = struct {
 
 pub fn deserialise(self: *Resp, raw: []const u8) !Message {
     if (raw.len == 0) {
-        return error.EmptyRequest;
+        return Message.err("empty request");
     }
 
     const data_type = try DataType.fromChar(raw[0]);
@@ -204,13 +204,13 @@ fn getArrayItems(self: *Resp, raw: []const u8) ![][]u8 {
         try commands.append(try c.toOwnedSlice());
     }
 
-    if (arr_len != commands.items.len) {
-        log.err("Array length mismatch: expected {d}, got {d}", .{ arr_len, commands.items.len });
-        for (commands.items) |c| {
-            log.err("command = {s}", .{c});
-        }
-        return error.ArrayLengthMismatch;
-    }
+    // if (arr_len != commands.items.len) {
+    //     log.err("Array length mismatch: expected {d}, got {d}", .{ arr_len, commands.items.len });
+    //     for (commands.items) |c| {
+    //         log.err("command = {s}", .{c});
+    //     }
+    //     return error.ArrayLengthMismatch;
+    // }
     const s = try commands.toOwnedSlice();
     return s;
 }

@@ -9,10 +9,12 @@ const Dictionary = @import("Dictionary.zig");
 const Router = @import("Router.zig");
 const Resp = @import("Resp.zig");
 const Request = @import("command.zig").Request;
-const ThreadPool = std.Thread.Pool;
+const ThreadPool = xev.ThreadPool;
+const Task = xev.ThreadPool.Task;
+const Batch = xev.ThreadPool.Batch;
 const xev = @import("xev");
 const TCP = xev.TCP;
-const uuid = @import("uuid");
+// const uuid = @import("uuid");
 
 const NTHREAD: usize = 20;
 
@@ -25,7 +27,7 @@ allocator: std.mem.Allocator,
 dict: *Dictionary,
 
 /// pool is used to handle incoming connections concurrently.
-pool: *ThreadPool,
+pool: ThreadPool,
 
 tcp_server: ?*TCP = null,
 
@@ -35,26 +37,17 @@ pub fn init(allocator: std.mem.Allocator) !TcpServer {
     const obj_store = try Dictionary.init(allocator);
     const router = try Router.init(allocator);
 
-    const opt = ThreadPool.Options{
-        .n_jobs = NTHREAD, // TODO: Make this configurable
-        .allocator = allocator,
-    };
-    var pool = try allocator.create(ThreadPool);
-    try pool.init(opt);
-
     return TcpServer{
         .allocator = allocator,
         .router = router,
         .dict = obj_store,
-        .pool = pool,
+        .pool = ThreadPool.init(.{}),
     };
 }
 
 pub fn deinit(self: *TcpServer) void {
     defer std.debug.print("Server deinitialised\n", .{});
 
-    self.pool.deinit();
-    self.allocator.destroy(self.pool);
     self.dict.deinit();
     self.router.deinit();
     self.* = undefined;
@@ -74,7 +67,6 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
     // accept -> read -> write -> close (valid since we disarm each flow after exec).
     // Then deallocate after connection close or at failure points
 
-    log.info("accepting connection", .{});
     // const completion = self.allocator.create(xev.Completion) catch unreachable;
     var completion: xev.Completion = undefined;
 
@@ -83,6 +75,9 @@ pub fn listenAndServe(self: *TcpServer, address: std.net.Address) !void {
 
     loop.run(.until_done) catch unreachable;
 
+    // TODO: handle signal and close the server and release memory
+    // properly
+    //
     // var server_closed = false;
     // server.close(&loop, completion, bool, &server_closed, (struct {
     //     fn callback(
@@ -123,6 +118,8 @@ fn connectionDidAccept(
     result: TCP.AcceptError!TCP,
 ) xev.CallbackAction {
     const l = std_log.scoped(.connectionDidAccept);
+    log.debug("connection accepted", .{});
+
     self.?.tcp_server.?.accept(loop, completion, TcpServer, self, connectionDidAccept);
 
     const connection = result catch |err| {
@@ -130,39 +127,79 @@ fn connectionDidAccept(
         return .disarm;
     };
 
-    l.info("spawning connection handler", .{});
-    self.?.pool.spawn(handleConnection, .{ self, connection }) catch unreachable;
+    // self.?.pool.spawn(handleConnection, .{ self.?, connection.fd }) catch unreachable;
+    // const task = ThreadPool.Task
+    // const batch = ThreadPool.Batch.from(task);
+    // self.?.pool.schedule
+
+    // create connection context to schedule in the thread pool
+    // it's associated memory will be deallocated when connection is closed
+    const conn_ctx = ConnectionCtx.init(self.?, connection.fd) catch |err| {
+        l.err("failed to init connection context {}", .{err});
+        return .disarm;
+    };
+    conn_ctx.scheduleInPool();
 
     return .disarm;
 }
 
-fn handleConnectionSync(self: *TcpServer, connection: posix.socket_t) void {
-    defer posix.close(connection);
+const ConnectionCtx = struct {
+    task: Task,
+    tcp_server: *TcpServer,
+    connection: posix.socket_t,
+    const conn_log = std_log.scoped(.connectionCtx);
+
+    pub fn init(tcp_server: *TcpServer, connection: posix.socket_t) !*ConnectionCtx {
+        const conn = try tcp_server.allocator.create(ConnectionCtx);
+        conn.* = .{
+            .tcp_server = tcp_server,
+            .connection = connection,
+            .task = undefined,
+        };
+        return conn;
+    }
+
+    pub fn deinit(self: *ConnectionCtx) void {
+        posix.close(self.connection);
+        self.tcp_server.allocator.destroy(self);
+    }
+
+    pub fn scheduleInPool(self: *ConnectionCtx) void {
+        self.task = Task{ .callback = didSchedule };
+        self.tcp_server.pool.schedule(Batch.from(&self.task));
+        conn_log.debug("Scheduled task to thread pool", .{});
+    }
+
+    fn didSchedule(task_ptr: *Task) void {
+        conn_log.debug("Starting task on a thread", .{});
+        const self: *ConnectionCtx = @fieldParentPtr("task", task_ptr);
+        self.tcp_server.handleConnection(self);
+    }
+};
+
+fn handleConnection(self: *TcpServer, ctx: *ConnectionCtx) void {
+    defer ctx.deinit();
 
     const l = std_log.scoped(.handleConnection);
+    l.debug("handling connection", .{});
 
     // 2.5 second timeout
     // const timeout = posix.timeval{ .tv_sec = 2, .tv_usec = 500_000 };
     const timeout = posix.timeval{ .tv_sec = 0, .tv_usec = 500_000 };
-    posix.setsockopt(connection, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout)) catch |err| {
+    posix.setsockopt(ctx.connection, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout)) catch |err| {
         l.err("Failed to set receive timeout: {}", .{err});
         return;
     };
-    posix.setsockopt(connection, posix.SOL.SOCKET, posix.SO.SNDTIMEO, &std.mem.toBytes(timeout)) catch |err| {
+    posix.setsockopt(ctx.connection, posix.SOL.SOCKET, posix.SO.SNDTIMEO, &std.mem.toBytes(timeout)) catch |err| {
         l.err("Failed to set send timeout: {}", .{err});
         return;
     };
 
     var buf: [4028]u8 = undefined;
-    const read = posix.read(connection, &buf) catch |err| {
+    const read = posix.read(ctx.connection, &buf) catch |err| {
         l.err("Failed to read from client: {}", .{err});
         return;
     };
-
-    if (read == 0) {
-        l.info("Read 0 bytes from client, closing connection", .{});
-        return;
-    }
 
     var resp = Resp.init(self.allocator);
     defer resp.deinit();
@@ -180,78 +217,9 @@ fn handleConnectionSync(self: *TcpServer, connection: posix.socket_t) void {
         return;
     };
 
-    writeAll(connection, raw_msg) catch |err| {
+    writeAll(ctx.connection, raw_msg) catch |err| {
         l.err("Failed to write to client: {}", .{err});
     };
-}
-
-fn handleConnection(self: ?*TcpServer, connection: TCP) void {
-    const l = std_log.scoped(.handleConnection);
-    l.info("handling connection {}", .{connection});
-
-    const timeout = posix.timeval{ .tv_sec = 0, .tv_usec = 500_000 };
-    posix.setsockopt(connection.fd, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout)) catch |err| {
-        l.err("Failed to set receive timeout: {}", .{err});
-        return;
-    };
-    posix.setsockopt(connection.fd, posix.SOL.SOCKET, posix.SO.SNDTIMEO, &std.mem.toBytes(timeout)) catch |err| {
-        l.err("Failed to set send timeout: {}", .{err});
-        return;
-    };
-
-    // create new loop and completion for handling connections
-    // since it's in a different thread'
-    var loop = xev.Loop.init(.{}) catch unreachable;
-    defer loop.deinit();
-    log.info("accepting connection", .{});
-
-    var completion: xev.Completion = undefined;
-    var recv_buf: [4068]u8 = undefined;
-
-    connection.read(&loop, &completion, .{ .slice = &recv_buf }, TcpServer, self, connectionDidRead);
-
-    loop.run(.until_done) catch unreachable;
-}
-
-fn connectionDidRead(
-    self: ?*TcpServer,
-    loop: *xev.Loop,
-    completion: *xev.Completion,
-    connection: TCP,
-    read_buf: xev.ReadBuffer,
-    result: TCP.ReadError!usize,
-) xev.CallbackAction {
-    // defer self.?.allocator.free(read_buf.slice);
-
-    const l = std_log.scoped(.connectionDidRead);
-
-    const recv_len = if (result) |len| len else |err| switch (err) {
-        error.EOF => 0,
-        else => {
-            l.err("failed to read, closing connection: {}", .{err});
-            connection.close(loop, completion, TcpServer, self, connectionDidClose);
-            return .disarm;
-        },
-    };
-
-    var resp = Resp.init(self.?.allocator);
-    defer resp.deinit();
-
-    const msg = resp.deserialise(read_buf.slice[0..recv_len]) catch Resp.Message.err("failed to deserialise");
-
-    const resp_msg = self.?.router.route(Request{ .message = msg, .dict = self.?.dict });
-
-    const raw_msg = resp.serialise(resp_msg) catch "-Err: failed to deserialise\r\n";
-
-    const write_buf = self.?.allocator.alloc(u8, raw_msg.len) catch |err| {
-        l.err("failed to allocate write buffer, closing connection: {}", .{err});
-        connection.close(loop, completion, TcpServer, self, connectionDidClose);
-        return .disarm;
-    };
-
-    @memcpy(write_buf, raw_msg);
-    connection.write(loop, completion, .{ .slice = write_buf }, TcpServer, self, connectionDidWrite);
-    return .disarm;
 }
 
 fn writeAll(socket: posix.socket_t, msg: []const u8) !void {
@@ -263,44 +231,4 @@ fn writeAll(socket: posix.socket_t, msg: []const u8) !void {
         }
         pos += written;
     }
-}
-
-fn connectionDidWrite(
-    self: ?*TcpServer,
-    loop: *xev.Loop,
-    completion: *xev.Completion,
-    connection: TCP,
-    write_buf: xev.WriteBuffer,
-    result: TCP.WriteError!usize,
-) xev.CallbackAction {
-    defer self.?.allocator.free(write_buf.slice);
-
-    const l = std_log.scoped(.connectionDidWrite);
-    const written = result catch |err| {
-        l.err("failed to write, closing connection: {}", .{err});
-        connection.close(loop, completion, TcpServer, self, connectionDidClose);
-        return .disarm;
-    };
-
-    l.debug("wrote {d}, closing connection", .{written});
-    connection.close(loop, completion, TcpServer, self, connectionDidClose);
-    return .disarm;
-}
-
-fn connectionDidClose(
-    _: ?*TcpServer,
-    _: *xev.Loop,
-    _: *xev.Completion,
-    _: TCP,
-    result: TCP.CloseError!void,
-) xev.CallbackAction {
-    // self.?.allocator.destroy(completion);
-
-    const l = std_log.scoped(.connectionDidClose);
-    if (result) {
-        l.debug("successfully closed connection", .{});
-    } else |err| {
-        l.err("failed to close connection: {}", .{err});
-    }
-    return .disarm;
 }
