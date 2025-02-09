@@ -4,7 +4,8 @@
 
 - RESP Protocol Serialisation and Deserialisation (Simple String, Bulk String, Integer, Error, Nil)
 - Commands Supported: PING, ECHO, SET, GET
-- Multi threaded connection handling using Thread Pool Strategy
+- Non Blocking IO for accepting connections: uses libxev
+- ThreadPool strategy for handling connections concurrently in multiple threads
 
 # Getting Started
 
@@ -13,7 +14,7 @@
 ```sh
 ❯ zig build run
 info(redis): Server initialised
-info(server): Server listening on 127.0.0.1:6379
+info(server): Server listening on 127.0.0.1:6377
 info(server): Client connected: 127.0.0.1:49803
 debug(resp): Serialised: +PONG
 
@@ -29,20 +30,24 @@ debug(resp): Serialised: +OK
 info(server): Client connection closed: 127.0.0.1:49841
 ```
 
-## Connect to server using `redis-cli` 
+## Connect to server using `redis-cli`
 
 ```sh
-❯ redis-cli PING
+❯ redis-cli -p 6377 PING
 PONG
-❯ redis-cli ECHO "Hello World!"
+❯ redis-cli -p 6377 ECHO "Hello World!"
 "Hello World!"
-❯ redis-cli GET foo
+❯ redis-cli -p 6377 GET foo
 (nil)
-❯ redis-cli SET foo bar
+❯ redis-cli -p 6377 SET foo bar
 OK
-❯ redis-cli GET foo
+❯ redis-cli -p 6377 GET foo
 "bar"
 ```
+
+## All supported commands
+
+![image](./images/commands.png)
 
 ---
 
