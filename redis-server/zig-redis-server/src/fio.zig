@@ -1876,7 +1876,7 @@ pub export var FIO_LOG_LEVEL: c_int = @import("std").mem.zeroes(c_int);
 pub extern fn FIO_LOG2STDERR(format: [*c]const u8, ...) void;
 pub const fio_protocol_s = struct_fio_protocol_s;
 pub const struct_fio_protocol_s = extern struct {
-    on_data: ?*const fn (isize, [*c]fio_protocol_s) callconv(.C) void = @import("std").mem.zeroes(?*const fn (isize, [*c]fio_protocol_s) callconv(.C) void),
+    on_data: ?*const fn (isize, *fio_protocol_s) callconv(.C) void = @import("std").mem.zeroes(?*const fn (isize, *fio_protocol_s) callconv(.C) void),
     on_ready: ?*const fn (isize, [*c]fio_protocol_s) callconv(.C) void = @import("std").mem.zeroes(?*const fn (isize, [*c]fio_protocol_s) callconv(.C) void),
     on_shutdown: ?*const fn (isize, [*c]fio_protocol_s) callconv(.C) u8 = @import("std").mem.zeroes(?*const fn (isize, [*c]fio_protocol_s) callconv(.C) u8),
     on_close: ?*const fn (isize, *fio_protocol_s) callconv(.C) void = @import("std").mem.zeroes(?*const fn (isize, *fio_protocol_s) callconv(.C) void),
@@ -1975,7 +1975,7 @@ pub const WriteArgs = extern struct {
         fd: isize,
     },
     after: extern union {
-        dealloc: ?*fn (?*anyopaque) void,
+        dealloc: ?*const fn (?*anyopaque) void,
         close: ?*fn (isize) void,
     },
     length: usize,

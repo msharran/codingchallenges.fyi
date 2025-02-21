@@ -16,63 +16,89 @@ const xev = @import("xev");
 const TCP = xev.TCP;
 
 // https://zig.news/xq/zig-build-explained-part-3-1ima
-// const fio = @cImport({
-//     @cInclude("fio.h");
-// });
 const fio = @import("fio.zig");
 
-const BufferPool = std.heap.MemoryPool([4096]u8);
 const ProtocolPool = std.heap.MemoryPool(Protocol);
 
 const Protocol = struct {
     fio_protocol: fio.fio_protocol_s,
     server: *Server,
+    write_buf: ?[]u8 = null,
 
     pub fn init(server: *Server) *Protocol {
         const p = server.protocol_pool.create() catch unreachable;
-        p.* = Protocol{ .server = server, .fio_protocol = fio.fio_protocol_s{
-            .on_data = on_data,
-            .on_close = on_close,
-        } };
+        p.* = Protocol{
+            .server = server,
+            .fio_protocol = fio.fio_protocol_s{
+                .on_data = on_data,
+                .on_close = on_close,
+            },
+        };
         return p;
     }
 
+    pub fn init_write_buf(self: *Protocol, size: usize) void {
+        self.write_buf = self.server.allocator.alloc(u8, size) catch unreachable;
+    }
+
     pub fn deinit(self: *Protocol) void {
+        log.debug("Deinitializing protocol", .{});
+        if (self.write_buf) |buf| {
+            self.server.allocator.free(buf);
+        }
         self.server.protocol_pool.destroy(self);
     }
 
-    fn on_data(uuid: isize, _: [*c]fio.fio_protocol_s) callconv(.C) void {
+    fn on_data(uuid: isize, fio_protocol: *fio.fio_protocol_s) callconv(.C) void {
         // get the parent ptr, ie Protocol from fio_protocol
         // const self: *Protocol = @fieldParentPtr("fio_protocol", fio_protocol);
-
+        const proto: *Protocol = @fieldParentPtr("fio_protocol", fio_protocol);
         // echo buffer
-        var buffer: [1024]u8 = undefined;
+        var buffer: [4028]u8 = undefined;
         // cast buffer to ?*anyopaque for passing to c
         const buffer_ptr: ?*anyopaque = @ptrCast(&buffer);
-        while (true) {
-            const len: usize = @intCast(fio.fio_read(uuid, buffer_ptr, 1024));
-            if (len <= 0) break;
 
-            log.debug("Read ::::: {s}", .{buffer});
+        const read: usize = @intCast(fio.fio_read(uuid, buffer_ptr, 4028));
 
-            var pong = "+PONG\r\n";
-            const pong_ptr: ?*anyopaque = @ptrCast(&pong);
-            const pong_len = pong.len;
+        log.debug("Read ::::: {s}", .{buffer[0..read]});
 
-            const wrote = fio.write2(uuid, .{
-                .data = .{ .buffer = pong_ptr },
-                .length = pong_len,
-                .offset = 0,
-                .after = .{ .dealloc = null },
-                .urgent = false,
-                .is_fd = false,
-                .rsv = false,
-                .rsv2 = false,
-            });
-            log.debug("Wrote {d} bytes", .{wrote});
+        var resp = Resp.init(proto.server.allocator);
+        defer resp.deinit();
 
-            fio.fio_close(uuid);
-        }
+        const msg = if (read == 0)
+            Message.err("empty request")
+        else
+            resp.deserialise(buffer[0..read]) catch Message.err("failed to deserialise");
+
+        var arena = std.heap.ArenaAllocator.init(proto.server.allocator);
+        var req = Request.init(&arena, msg, proto.server.dict);
+        defer req.deinit();
+
+        const resp_msg = proto.server.router.route(req);
+
+        const raw_msg = resp.serialise(resp_msg) catch "-Err failed to serialise\r\n";
+
+        proto.init_write_buf(raw_msg.len);
+        @memcpy(proto.write_buf.?, raw_msg);
+
+        const write_buf_c_ptr: ?*anyopaque = @constCast(proto.write_buf.?.ptr);
+        const wrote = fio.write2(uuid, .{
+            .data = .{ .buffer = write_buf_c_ptr },
+            .length = raw_msg.len,
+            .offset = 0,
+            .after = .{ .dealloc = (struct {
+                pub fn dealloc(_: ?*anyopaque) void {
+                    log.debug("Deallocated buffer", .{});
+                }
+            }).dealloc },
+            .urgent = false,
+            .is_fd = false,
+            .rsv = false,
+            .rsv2 = false,
+        });
+        log.debug("Wrote {d} bytes: {s}", .{ wrote, raw_msg });
+
+        fio.fio_close(uuid);
     }
 
     fn on_close(uuid: isize, fio_protocol: *fio.fio_protocol_s) callconv(.C) void {
@@ -162,174 +188,5 @@ pub const Server = struct {
             return error.NoListeningSocketAvailableForPort;
         }
         fio.fio_start(args);
-    }
-
-    // pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
-    //     var server = try TCP.init(address);
-    //     self.xev_tcp_server = &server;
-
-    //     // Bind and listen
-    //     try server.bind(address);
-    //     try server.listen(1);
-
-    //     var loop = xev.Loop.init(.{}) catch unreachable;
-    //     defer loop.deinit();
-    //     // Allocate completion, reuse it in entire connection flow
-    //     // accept -> read -> write -> close (valid since we disarm each flow after exec).
-    //     // Then deallocate after connection close or at failure points
-
-    //     // const completion = self.allocator.create(xev.Completion) catch unreachable;
-    //     var completion: xev.Completion = undefined;
-
-    //     const self_optional: ?*Server = self;
-    //     self.xev_tcp_server.?.accept(&loop, &completion, Server, self_optional, onAccept);
-
-    //     loop.run(.until_done) catch unreachable;
-
-    //     // TODO: handle signal and close the server and release memory
-    //     // properly
-    //     //
-    //     // var server_closed = false;
-    //     // server.close(&loop, completion, bool, &server_closed, (struct {
-    //     //     fn callback(
-    //     //         ud: ?*bool,
-    //     //         _: *xev.Loop,
-    //     //         _: *xev.Completion,
-    //     //         _: TCP,
-    //     //         r: TCP.CloseError!void,
-    //     //     ) xev.CallbackAction {
-    //     //         _ = r catch unreachable;
-    //     //         ud.?.* = true;
-    //     //         return .disarm;
-    //     //     }
-    //     // }).callback);
-
-    //     // try loop.run(.until_done);
-
-    //     // log.info("server_closed {}", .{server_closed});
-    // }
-
-    fn onAccept(
-        self: ?*Server,
-        loop: *xev.Loop,
-        completion: *xev.Completion,
-        result: TCP.AcceptError!TCP,
-    ) xev.CallbackAction {
-        const l = std_log.scoped(.connectionDidAccept);
-        log.debug("connection accepted", .{});
-
-        self.?.xev_tcp_server.?.accept(loop, completion, Server, self, onAccept);
-
-        const xev_connection = result catch |err| {
-            l.err("failed to accept new connection {}", .{err});
-            return .disarm;
-        };
-
-        // create connection context to schedule in the thread pool
-        // it's associated memory will be deallocated when connection is closed
-        const connection = Connection.init(self.?, xev_connection.fd) catch |err| {
-            l.err("failed to init connection context {}", .{err});
-            return .disarm;
-        };
-        connection.scheduleOnThreadPool();
-
-        return .disarm;
-    }
-};
-
-const Connection = struct {
-    task: Task,
-    server: *Server,
-    connection: posix.socket_t,
-    const conn_log = std_log.scoped(.connectionCtx);
-
-    /// init allocates memory for this connection context, caller is responsible for deallocation
-    /// with deinit
-    pub fn init(svr: *Server, connection: posix.socket_t) !*Connection {
-        const conn = try svr.allocator.create(Connection);
-        conn.* = .{
-            .server = svr,
-            .connection = connection,
-            .task = undefined,
-        };
-        return conn;
-    }
-
-    /// deinit frees memory associated with this connection context.
-    /// Should be called when connection is closed.
-    pub fn deinit(self: *Connection) void {
-        posix.close(self.connection);
-        self.server.allocator.destroy(self);
-    }
-
-    /// scheduleOnThread schedules this connection task in the thread pool.
-    /// The onScheduled callback will process the request.
-    pub fn scheduleOnThreadPool(self: *Connection) void {
-        self.task = Task{ .callback = onScheduled };
-        self.server.pool.schedule(Batch.from(&self.task));
-        conn_log.debug("Scheduled task to thread pool", .{});
-    }
-
-    /// onScheduled is the callback that processes the connection's request.
-    /// Should not be called directly, called by thread pool when task is scheduled.
-    fn onScheduled(task_ptr: *Task) void {
-        conn_log.debug("Starting task on a thread", .{});
-        const self: *Connection = @fieldParentPtr("task", task_ptr);
-        self.handleConnection(self.server);
-    }
-
-    fn handleConnection(connection: *Connection, server: *Server) void {
-        defer connection.deinit();
-
-        const l = std_log.scoped(.handleConnection);
-        l.debug("handling connection", .{});
-
-        // // 2.5 second timeout
-        // const timeout = posix.timeval{ .tv_sec = 2, .tv_usec = 500_000 };
-        // // const timeout = posix.timeval{ .tv_sec = 0, .tv_usec = 500_000 };
-        // posix.setsockopt(ctx.connection, posix.SOL.SOCKET, posix.SO.RCVTIMEO, &std.mem.toBytes(timeout)) catch |err| {
-        //     l.err("Failed to set receive timeout: {}", .{err});
-        //     return;
-        // };
-        // posix.setsockopt(ctx.connection, posix.SOL.SOCKET, posix.SO.SNDTIMEO, &std.mem.toBytes(timeout)) catch |err| {
-        //     l.err("Failed to set send timeout: {}", .{err});
-        //     return;
-        // };
-
-        var buf: [4028]u8 = undefined;
-        const read = posix.read(connection.connection, &buf) catch |err| {
-            l.err("Failed to read from client: {}", .{err});
-            return;
-        };
-
-        var resp = Resp.init(server.allocator);
-        defer resp.deinit();
-
-        const msg = if (read == 0)
-            Message.err("empty request")
-        else
-            resp.deserialise(buf[0..read]) catch Message.err("failed to deserialise");
-
-        var arena = std.heap.ArenaAllocator.init(server.allocator);
-        var req = Request.init(&arena, msg, server.dict);
-        defer req.deinit();
-
-        const resp_msg = server.router.route(req);
-
-        const raw_msg = resp.serialise(resp_msg) catch "-Err failed to serialise\r\n";
-        writeAll(connection.connection, raw_msg) catch |err| {
-            l.err("Failed to write to client: {}", .{err});
-        };
-    }
-
-    fn writeAll(socket: posix.socket_t, msg: []const u8) !void {
-        var pos: usize = 0;
-        while (pos < msg.len) {
-            const written = try posix.write(socket, msg[pos..]);
-            if (written == 0) {
-                return error.Closed;
-            }
-            pos += written;
-        }
     }
 };
