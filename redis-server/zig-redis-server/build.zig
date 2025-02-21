@@ -1,11 +1,16 @@
 const std = @import("std");
+const build_facilio = @import("vendor/facil.io/build.zig").build_facilio;
 
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    if (target.result.os.tag == .windows) {
+        std.log.err("\x1b[31mPlatform Not Supported\x1b[0m\nCurrently, Facil.io is not compatible with Windows. Consider using Linux or Windows Subsystem for Linux (WSL) instead.\nFor more information, please see:\n- https://facil.io/#forking-contributing-and-all-that-jazz\n", .{});
+        std.process.exit(1);
+    }
 
     const exe = b.addExecutable(.{
         .name = "redis-server",
@@ -13,6 +18,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    const facilio = try build_facilio("vendor/facil.io", b, target, optimize, false);
+    exe.root_module.linkLibrary(facilio);
+    exe.addIncludePath(b.path("vendor/facil.io/lib/facil"));
+    exe.linkLibC();
 
     const xev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
     exe.root_module.addImport("xev", xev.module("xev"));

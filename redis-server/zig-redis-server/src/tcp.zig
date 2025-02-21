@@ -15,6 +15,76 @@ const Batch = xev.ThreadPool.Batch;
 const xev = @import("xev");
 const TCP = xev.TCP;
 
+// https://zig.news/xq/zig-build-explained-part-3-1ima
+// const fio = @cImport({
+//     @cInclude("fio.h");
+// });
+const fio = @import("fio.zig");
+
+const BufferPool = std.heap.MemoryPool([4096]u8);
+const ProtocolPool = std.heap.MemoryPool(Protocol);
+
+const Protocol = struct {
+    fio_protocol: fio.fio_protocol_s,
+    server: *Server,
+
+    pub fn init(server: *Server) *Protocol {
+        const p = server.protocol_pool.create() catch unreachable;
+        p.* = Protocol{ .server = server, .fio_protocol = fio.fio_protocol_s{
+            .on_data = on_data,
+            .on_close = on_close,
+        } };
+        return p;
+    }
+
+    pub fn deinit(self: *Protocol) void {
+        self.server.protocol_pool.destroy(self);
+    }
+
+    fn on_data(uuid: isize, _: [*c]fio.fio_protocol_s) callconv(.C) void {
+        // get the parent ptr, ie Protocol from fio_protocol
+        // const self: *Protocol = @fieldParentPtr("fio_protocol", fio_protocol);
+
+        // echo buffer
+        var buffer: [1024]u8 = undefined;
+        // cast buffer to ?*anyopaque for passing to c
+        const buffer_ptr: ?*anyopaque = @ptrCast(&buffer);
+        while (true) {
+            const len: usize = @intCast(fio.fio_read(uuid, buffer_ptr, 1024));
+            if (len <= 0) break;
+
+            log.debug("Read ::::: {s}", .{buffer});
+
+            var pong = "+PONG\r\n";
+            const pong_ptr: ?*anyopaque = @ptrCast(&pong);
+            const pong_len = pong.len;
+
+            const wrote = fio.write2(uuid, .{
+                .data = .{ .buffer = pong_ptr },
+                .length = pong_len,
+                .offset = 0,
+                .after = .{ .dealloc = null },
+                .urgent = false,
+                .is_fd = false,
+                .rsv = false,
+                .rsv2 = false,
+            });
+            log.debug("Wrote {d} bytes", .{wrote});
+
+            fio.fio_close(uuid);
+        }
+    }
+
+    fn on_close(uuid: isize, fio_protocol: *fio.fio_protocol_s) callconv(.C) void {
+        // get the parent ptr, ie Protocol from fio_protocol
+
+        const proto: *Protocol = @fieldParentPtr("fio_protocol", fio_protocol);
+        log.debug("Connection {d} closed.", .{uuid});
+        // deinit self
+        proto.deinit();
+    }
+};
+
 pub const Server = struct {
     // const uuid = @import("uuid");
 
@@ -23,6 +93,8 @@ pub const Server = struct {
 
     /// allocator is used to allocate memory for the server.
     allocator: std.mem.Allocator,
+
+    protocol_pool: ProtocolPool,
 
     dict: *Dictionary,
 
@@ -42,61 +114,100 @@ pub const Server = struct {
             .router = router,
             .dict = obj_store,
             .pool = ThreadPool.init(.{}),
+            .protocol_pool = ProtocolPool.init(allocator),
         };
     }
 
     pub fn deinit(self: *Server) void {
         defer log.info("Server deinitialised", .{});
 
+        self.protocol_pool.deinit();
         self.dict.deinit();
         self.router.deinit();
         self.* = undefined;
     }
 
-    pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
-        var server = try TCP.init(address);
-        self.xev_tcp_server = &server;
+    /////// TEMPPPPPPP
 
-        // Bind and listen
-        try server.bind(address);
-        try server.listen(1);
+    fn echo_on_open(uuid: isize, udata: ?*anyopaque) callconv(.C) void {
+        // Protocol objects MUST be dynamically allocated when multi-threading.
+        const self: *Server = @ptrCast(@alignCast(udata));
+        const proto = Protocol.init(self);
+        log.debug("New connection received", .{});
 
-        var loop = xev.Loop.init(.{}) catch unreachable;
-        defer loop.deinit();
-        // Allocate completion, reuse it in entire connection flow
-        // accept -> read -> write -> close (valid since we disarm each flow after exec).
-        // Then deallocate after connection close or at failure points
-
-        // const completion = self.allocator.create(xev.Completion) catch unreachable;
-        var completion: xev.Completion = undefined;
-
-        const self_optional: ?*Server = self;
-        self.xev_tcp_server.?.accept(&loop, &completion, Server, self_optional, onAccept);
-
-        loop.run(.until_done) catch unreachable;
-
-        // TODO: handle signal and close the server and release memory
-        // properly
-        //
-        // var server_closed = false;
-        // server.close(&loop, completion, bool, &server_closed, (struct {
-        //     fn callback(
-        //         ud: ?*bool,
-        //         _: *xev.Loop,
-        //         _: *xev.Completion,
-        //         _: TCP,
-        //         r: TCP.CloseError!void,
-        //     ) xev.CallbackAction {
-        //         _ = r catch unreachable;
-        //         ud.?.* = true;
-        //         return .disarm;
-        //     }
-        // }).callback);
-
-        // try loop.run(.until_done);
-
-        // log.info("server_closed {}", .{server_closed});
+        fio.fio_attach(uuid, &proto.fio_protocol);
+        fio.fio_timeout_set(uuid, 5);
     }
+
+    const StartOptions = struct {
+        port: []const u8 = "6377",
+    };
+
+    /// Start the IO reactor
+    ///
+    /// Will start listeners etc.
+    pub fn start(self: *Server, _: StartOptions) !void {
+        log.info("starting server", .{});
+
+        const args = fio.fio_start_args{
+            .threads = 4,
+            .workers = 4,
+        };
+
+        if (fio.fio_listen(.{
+            .port = "6377",
+            .on_open = echo_on_open,
+            .udata = self,
+        }) == -1) {
+            return error.NoListeningSocketAvailableForPort;
+        }
+        fio.fio_start(args);
+    }
+
+    // pub fn listenAndServe(self: *Server, address: std.net.Address) !void {
+    //     var server = try TCP.init(address);
+    //     self.xev_tcp_server = &server;
+
+    //     // Bind and listen
+    //     try server.bind(address);
+    //     try server.listen(1);
+
+    //     var loop = xev.Loop.init(.{}) catch unreachable;
+    //     defer loop.deinit();
+    //     // Allocate completion, reuse it in entire connection flow
+    //     // accept -> read -> write -> close (valid since we disarm each flow after exec).
+    //     // Then deallocate after connection close or at failure points
+
+    //     // const completion = self.allocator.create(xev.Completion) catch unreachable;
+    //     var completion: xev.Completion = undefined;
+
+    //     const self_optional: ?*Server = self;
+    //     self.xev_tcp_server.?.accept(&loop, &completion, Server, self_optional, onAccept);
+
+    //     loop.run(.until_done) catch unreachable;
+
+    //     // TODO: handle signal and close the server and release memory
+    //     // properly
+    //     //
+    //     // var server_closed = false;
+    //     // server.close(&loop, completion, bool, &server_closed, (struct {
+    //     //     fn callback(
+    //     //         ud: ?*bool,
+    //     //         _: *xev.Loop,
+    //     //         _: *xev.Completion,
+    //     //         _: TCP,
+    //     //         r: TCP.CloseError!void,
+    //     //     ) xev.CallbackAction {
+    //     //         _ = r catch unreachable;
+    //     //         ud.?.* = true;
+    //     //         return .disarm;
+    //     //     }
+    //     // }).callback);
+
+    //     // try loop.run(.until_done);
+
+    //     // log.info("server_closed {}", .{server_closed});
+    // }
 
     fn onAccept(
         self: ?*Server,

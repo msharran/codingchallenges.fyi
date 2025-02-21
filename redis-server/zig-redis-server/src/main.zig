@@ -20,6 +20,5 @@ pub fn main() !void {
 
     log.info("Server initialised", .{});
 
-    const address = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, 6377);
-    try server.listenAndServe(address);
+    try server.start(.{});
 }

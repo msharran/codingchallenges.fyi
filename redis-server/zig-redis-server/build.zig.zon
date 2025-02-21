@@ -36,6 +36,7 @@
         "build.zig",
         "build.zig.zon",
         "src",
+        "facil.io",
         // For example...
         //"LICENSE",
         //"README.md",
