@@ -4,30 +4,8 @@ const assert = std.debug.assert;
 const expect = std.testing.expect;
 
 const Message = @import("Resp.zig").Message;
+const Request = @import("Router.zig").Request;
 const Dictionary = @import("Dictionary.zig");
-pub const CommandFn = *const fn (Request) Message;
-
-pub const Request = struct {
-    message: Message,
-    dict: *Dictionary,
-
-    // used for list type of response
-    arena: *std.heap.ArenaAllocator,
-
-    pub fn init(arena: *std.heap.ArenaAllocator, m: Message, d: *Dictionary) Request {
-        return Request{
-            .message = m,
-            .dict = d,
-            .arena = arena,
-        };
-    }
-
-    pub fn deinit(self: *Request) void {
-        self.arena.deinit();
-        self.message = undefined;
-        self.* = undefined;
-    }
-};
 
 pub fn ping(_: Request) Message {
     return Message.simpleString("PONG");
@@ -52,10 +30,8 @@ pub fn set(r: Request) Message {
     const key = items[1].value.single;
     const value = items[2].value.single;
 
-    r.dict.putString(key, value) catch |err| {
-        std.debug.print("ERR failed to set: {}\n", .{err});
-        return Message.err("ERR failed to set");
-    };
+    log.debug("set key: {s}, value: {s}", .{ key, value });
+    r.dict.putString(key, value) catch return Message.err("ERR failed to set");
 
     return Message.simpleString("OK");
 }
@@ -74,12 +50,10 @@ pub fn get(r: Request) Message {
 
     const key = items[1].value.single;
 
-    const value = r.dict.getString(key) catch |err| {
-        std.debug.print("ERR failed to set: {}\n", .{err});
-        return Message.err("ERR failed to set");
-    };
-
+    const value = r.dict.getString(key);
+    log.debug("get key: {s}, value: {?s}", .{ key, value });
     if (value == null) {
+        log.err("ERR key not found", .{});
         return Message.nil();
     }
 

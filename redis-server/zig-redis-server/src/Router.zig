@@ -7,47 +7,31 @@
 ///     - "ECHO" -> fn(Message) Message { return Message{ .data_type = DataType.SimpleString, .content = message.content }; }
 const std = @import("std");
 const log = std.log.scoped(.router);
-const Router = @This();
 
-const Message = @import("Resp.zig").Message;
+const Self = @This();
+
 const command = @import("command.zig");
-const CommandFn = command.CommandFn;
+const Dictionary = @import("Dictionary.zig");
+const Message = @import("Resp.zig").Message;
+const HandlerFn = *const fn (Request) Message;
+const RoutesMap = std.StaticStringMap(HandlerFn);
+const RouterKV = struct { []const u8, HandlerFn };
 
 /// Stores all the mapping of command to handler.
-routes: std.StringHashMap(CommandFn),
+routes: RoutesMap,
 
-allocator: std.mem.Allocator,
-
-pub fn init(a: std.mem.Allocator) !Router {
-    const routes = std.StringHashMap(CommandFn).init(a);
-    var r = Router{
-        .routes = routes,
-        .allocator = a,
+pub fn initComptime() Self {
+    const routes: []const RouterKV = &.{
+        .{ "PING", command.ping },
+        .{ "ECHO", command.echo },
+        .{ "SET", command.set },
+        .{ "GET", command.get },
+        .{ "PRINTALL", command.printall },
+        .{ "CONFIG", command.config },
     };
-    try r.registerRoutes();
-    return r;
-}
-
-fn registerRoutes(self: *Router) !void {
-    const Route = struct {
-        command: []const u8,
-        handler: CommandFn,
+    return Self{
+        .routes = RoutesMap.initComptime(routes),
     };
-    const routes = [_]Route{
-        .{ .command = "PING", .handler = command.ping },
-        .{ .command = "ECHO", .handler = command.echo },
-        .{ .command = "SET", .handler = command.set },
-        .{ .command = "GET", .handler = command.get },
-        .{ .command = "PRINTALL", .handler = command.printall },
-        .{ .command = "CONFIG", .handler = command.config },
-    };
-    for (routes) |r| {
-        try self.routes.put(r.command, r.handler);
-    }
-}
-
-pub fn deinit(self: *Router) void {
-    self.routes.deinit();
 }
 
 /// Routes the message to the appropriate handler.
@@ -58,7 +42,7 @@ pub fn deinit(self: *Router) void {
 /// Example:
 ///    ["PING"]
 ///    ["ECHO", "hello"]
-pub fn route(self: Router, req: command.Request) Message {
+pub fn route(self: Self, req: Request) Message {
     if (req.message.type != .Array) {
         return Message.err("ERR bad request: expected array");
     }
@@ -76,3 +60,25 @@ pub fn route(self: Router, req: command.Request) Message {
         return Message.err("ERR unknown command");
     }
 }
+
+pub const Request = struct {
+    message: Message,
+    dict: *Dictionary,
+
+    // used for list type of response
+    arena: *std.heap.ArenaAllocator,
+
+    pub fn init(allocator: std.mem.Allocator, m: Message, d: *Dictionary) Request {
+        const arena = allocator.create(std.heap.ArenaAllocator) catch unreachable;
+        arena.* = std.heap.ArenaAllocator.init(allocator);
+        return Request{
+            .message = m,
+            .dict = d,
+            .arena = arena,
+        };
+    }
+
+    pub fn deinit(self: Request) void {
+        self.arena.deinit();
+    }
+};

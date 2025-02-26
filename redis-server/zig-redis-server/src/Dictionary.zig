@@ -3,7 +3,7 @@ const log = std.log.scoped(.dictionary);
 const Dictionary = @This();
 const RwLock = std.Thread.RwLock;
 
-entries: std.StringHashMap(Value),
+map: std.StringHashMap(Value),
 
 allocator: std.mem.Allocator,
 
@@ -25,35 +25,27 @@ pub const ValueType = enum {
     string,
 };
 
-pub fn init(allocator: std.mem.Allocator) !*Dictionary {
-    const rwlock = try allocator.create(RwLock);
-    rwlock.* = .{};
-
-    const dict = Dictionary{
-        .entries = std.StringHashMap(Value).init(allocator),
+pub fn init(allocator: std.mem.Allocator) !Dictionary {
+    const lock = try allocator.create(RwLock);
+    lock.* = .{};
+    return .{
         .allocator = allocator,
-        .rwlock = rwlock,
+        .map = std.StringHashMap(Value).init(allocator),
+        .rwlock = lock,
     };
-
-    const dict_p = try allocator.create(Dictionary);
-    dict_p.* = dict;
-
-    return dict_p;
 }
 
 pub fn deinit(self: *Dictionary) void {
     self.allocator.destroy(self.rwlock);
 
-    var iter = self.entries.iterator();
+    var iter = self.map.iterator();
     while (iter.next()) |kv| {
         const key_p = kv.key_ptr.*;
         self.allocator.free(key_p);
         const val_p = kv.value_ptr.*.string;
         self.allocator.free(val_p);
     }
-    self.entries.deinit();
-
-    self.allocator.destroy(self);
+    self.map.deinit();
 }
 
 pub fn putString(self: *Dictionary, key: []const u8, value: []const u8) !void {
@@ -63,25 +55,25 @@ pub fn putString(self: *Dictionary, key: []const u8, value: []const u8) !void {
     const key_p = try self.allocator.dupe(u8, key);
     const val_p = try self.allocator.dupe(u8, value);
     const val = Value{ .string = val_p };
-    try self.entries.put(key_p, val);
+    try self.map.put(key_p, val);
 }
 
-pub fn getString(self: *Dictionary, key: []const u8) !?[]const u8 {
+pub fn getString(self: *Dictionary, key: []const u8) ?[]const u8 {
     self.rwlock.lockShared();
     defer self.rwlock.unlockShared();
 
-    const val = self.entries.get(key);
+    const val = self.map.get(key);
 
     if (val) |v| return v.string;
     return null;
 }
 
 pub fn printAll(self: Dictionary) void {
-    // self.rwlock.lockShared();
-    // defer self.rwlock.unlockShared();
+    self.rwlock.lockShared();
+    defer self.rwlock.unlockShared();
 
     const l = std.log.scoped(.print);
-    var iter = self.entries.iterator();
+    var iter = self.map.iterator();
     while (iter.next()) |kv| {
         const k = kv.key_ptr.*;
         const v = kv.value_ptr.*;

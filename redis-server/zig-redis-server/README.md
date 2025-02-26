@@ -56,3 +56,7 @@ OK
 - [TCP Server in Zig](https://www.openmymind.net/TCP-Server-In-Zig-Part-1-Single-Threaded/)
 - [Redis Protocol](https://redis.io/docs/latest/develop/reference/protocol-spec/#resp-protocol-description)
 - [Coding Challenge: Implement a Redis Server](https://codingchallenges.fyi/challenges/challenge-redis/)
+
+```
+/home/msharran/.local/share/zed/remote_extensions/work/zig/zls-0.13.0/zls
+```

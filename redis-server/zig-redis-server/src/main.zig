@@ -13,9 +13,10 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
         const check = gpa.deinit();
-        std.debug.print("Memory leak check = {}", .{check});
+        log.info("Memory leak check = {}", .{check});
     }
-    var server = try tcp.Server.init(gpa.allocator());
+    const allocator = gpa.allocator();
+    var server = try tcp.Server.init(allocator);
     defer server.deinit();
 
     log.info("Server initialised", .{});
