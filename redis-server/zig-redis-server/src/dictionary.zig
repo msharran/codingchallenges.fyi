@@ -1,31 +1,38 @@
 const std = @import("std");
 const log = std.log.scoped(.dictionary);
+const redis_alloc = @import("allocator.zig");
 
-var gpa = std.heap.GeneralPurposeAllocator(.{
-    .stack_trace_frames = 0,
-}){};
+var global_dict: ?Dictionary = null;
+var global_init_once = std.once(struct {
+    fn callback() void {
+        global_dict = Dictionary.init(redis_alloc.global.?) catch unreachable;
+    }
+}.callback);
 
-var default: ?Dictionary = null;
+var next_id: u32 = 0;
+
+pub fn initGlobal() void {
+    log.debug("Initializing global dictionary", .{});
+    global_init_once.call();
+}
+
+pub fn deinitGlobal() void {
+    log.debug("Deinitializing global dictionary with {d} entries", .{global_dict.?.map.count()});
+    getGlobalPtr().deinit();
+}
 
 // panic if default is not initialized
-pub fn getDefaultPtr() *Dictionary {
-    return &default.?;
-}
-
-pub fn init() !void {
-    default = try Dictionary.init(gpa.allocator());
-}
-
-pub fn deinit() void {
-    default.?.deinit();
-    const check = gpa.deinit();
-    log.debug("Global dictionary and allocator deinitialized; status={}", .{check});
+pub fn getGlobalPtr() *Dictionary {
+    if (global_dict == null) {
+        @panic("Dictionary not initialized");
+    }
+    return &global_dict.?;
 }
 
 pub const Dictionary = struct {
     const RwLock = std.Thread.RwLock;
     const StringValueHashMap = std.StringHashMap(Value);
-
+    id: u32 = 0,
     map: StringValueHashMap,
 
     allocator: std.mem.Allocator,
@@ -49,9 +56,11 @@ pub const Dictionary = struct {
     };
 
     pub fn init(allocator: std.mem.Allocator) !Dictionary {
+        next_id += 1;
         const lock = try allocator.create(RwLock);
         lock.* = RwLock{};
         return .{
+            .id = next_id,
             .allocator = allocator,
             .map = StringValueHashMap.init(allocator),
             .rwlock = lock,
@@ -76,24 +85,33 @@ pub const Dictionary = struct {
         self.rwlock.lock();
         defer self.rwlock.unlock();
 
-        self.debugDictionaryState();
+        log.debug("PUT: Dictionary[{d}] key='{s}' value='{s}'", .{ self.id, key, value });
 
-        const result = try self.map.getOrPut(key);
-        if (result.found_existing) {
-            log.debug("Found existing key: {s}", .{key});
-            // Free the existing value
-            self.allocator.free(result.value_ptr.*.string);
-        } else {
-            log.debug("Creating new key: {s}", .{key});
-            // Store a copy of the key since we need to own it
-            const key_p = try self.allocator.dupe(u8, key);
-            result.key_ptr.* = key_p;
+        // First check if key exists
+        if (self.map.getEntry(key)) |entry| {
+            // Key exists - update value only
+            const new_value = try self.allocator.dupe(u8, value);
+            errdefer self.allocator.free(new_value);
+
+            // Free old value
+            self.allocator.free(entry.value_ptr.*.string);
+
+            // Update value using the existing stored key
+            entry.value_ptr.* = Value{ .string = new_value };
+
+            log.debug("Updated existing key '{s}' with new value", .{entry.key_ptr.*});
+            return;
         }
 
-        // Create a new value
-        const val_p = try self.allocator.dupe(u8, value);
-        log.debug("Creating new value: {s} {*}", .{ value, val_p });
-        result.value_ptr.* = Value{ .string = val_p };
+        // New key - copy both key and value
+        const key_copy = try self.allocator.dupe(u8, key);
+        errdefer self.allocator.free(key_copy);
+
+        const value_copy = try self.allocator.dupe(u8, value);
+        errdefer self.allocator.free(value_copy);
+
+        try self.map.put(key_copy, Value{ .string = value_copy });
+        log.debug("Added new key '{s}' with value", .{key});
 
         self.debugDictionaryState();
     }
@@ -102,18 +120,19 @@ pub const Dictionary = struct {
         self.rwlock.lockShared();
         defer self.rwlock.unlockShared();
 
-        self.debugDictionaryState();
+        log.debug("GET: Dictionary[{d}] key='{s}'", .{ self.id, key });
 
-        const val = self.map.get(key);
+        if (self.map.get(key)) |value| {
+            log.debug("Found value for key '{s}'", .{key});
+            return value.string;
+        }
 
-        if (val) |v| return v.string;
-
-        self.debugDictionaryState();
+        log.debug("Key '{s}' not found", .{key});
         return null;
     }
 
     pub fn debugDictionaryState(self: *Dictionary) void {
-        log.debug("Dictionary state:", .{});
+        log.debug("Dictionary state: [{d}]", .{self.id});
         log.debug("  Address: {*}", .{self});
         log.debug("  Map address: {*}", .{&self.map});
         log.debug("  Map capacity: {d}", .{self.map.capacity()});

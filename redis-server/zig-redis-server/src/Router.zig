@@ -11,7 +11,8 @@ const log = std.log.scoped(.router);
 const Self = @This();
 
 const command = @import("command.zig");
-const Dictionary = @import("dictionary.zig").Dictionary;
+const dictionary = @import("dictionary.zig");
+const Dictionary = dictionary.Dictionary;
 const Message = @import("Resp.zig").Message;
 const HandlerFn = *const fn (Request) Message;
 const RoutesMap = std.StaticStringMap(HandlerFn);
@@ -42,6 +43,8 @@ pub fn initComptime() Self {
 ///    ["PING"]
 ///    ["ECHO", "hello"]
 pub fn route(self: Self, req: Request) Message {
+    const dict = dictionary.getGlobalPtr();
+    log.debug("Routing request with dictionary at {*} containing {d} entries", .{ dict, dict.map.count() });
     if (req.message.type != .Array) {
         return Message.err("ERR bad request: expected array");
     }
@@ -62,19 +65,14 @@ pub fn route(self: Self, req: Request) Message {
 
 pub const Request = struct {
     message: Message,
-    // used for list type of response
+
+    // arena should be deinitialized by the caller
     arena: *std.heap.ArenaAllocator,
 
-    pub fn init(allocator: std.mem.Allocator, m: Message) Request {
-        const arena = allocator.create(std.heap.ArenaAllocator) catch unreachable;
-        arena.* = std.heap.ArenaAllocator.init(allocator);
+    pub fn init(arena: *std.heap.ArenaAllocator, m: Message) Request {
         return Request{
             .message = m,
             .arena = arena,
         };
-    }
-
-    pub fn deinit(self: Request) void {
-        self.arena.deinit();
     }
 };

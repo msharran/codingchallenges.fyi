@@ -11,15 +11,9 @@ const dictionary = @import("dictionary.zig");
 // };
 
 pub fn main() !void {
-    var gpa = redis.GeneralPurposeAllocator{};
-    defer {
-        const check = gpa.deinit();
-        log.info("Memory leak check = {}", .{check});
-    }
-
-    var redis_server = try redis.Server.init(&gpa);
+    var redis_server = try redis.Server.init();
     defer redis_server.deinit();
 
     log.info("Server initialised", .{});
-    try redis_server.start(.{});
+    try redis_server.start();
 }

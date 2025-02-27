@@ -32,7 +32,7 @@ pub fn set(r: Request) Message {
     const value = items[2].value.single;
 
     log.debug("set key: {s}, value: {s}", .{ key, value });
-    const dict = dictionary.getDefaultPtr();
+    const dict = dictionary.getGlobalPtr();
     dict.putString(key, value) catch return Message.err("ERR failed to set");
 
     return Message.simpleString("OK");
@@ -46,7 +46,7 @@ pub fn get(r: Request) Message {
 
     const key = items[1].value.single;
 
-    const dict = dictionary.getDefaultPtr();
+    const dict = dictionary.getGlobalPtr();
     const value = dict.getString(key);
     log.debug("get key: {s}, value: {?s}", .{ key, value });
     if (value == null) {
