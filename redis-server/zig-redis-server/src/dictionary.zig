@@ -12,13 +12,15 @@ var global_init_once = std.once(struct {
 var next_id: u32 = 0;
 
 pub fn initGlobal() void {
-    log.debug("Initializing global dictionary", .{});
+    log.info("Initializing global dictionary", .{});
     global_init_once.call();
 }
 
 pub fn deinitGlobal() void {
-    log.debug("Deinitializing global dictionary with {d} entries", .{global_dict.?.map.count()});
-    getGlobalPtr().deinit();
+    log.info("Deinitializing global dictionary", .{});
+    const dict = getGlobalPtr();
+    dict.printStateInfo();
+    dict.deinit();
 }
 
 // panic if default is not initialized
@@ -144,5 +146,20 @@ pub const Dictionary = struct {
             sum += 1;
         }
         log.debug("  Actual items found: {d}", .{sum});
+    }
+
+    pub fn printStateInfo(self: *Dictionary) void {
+        log.info("Dictionary state: [{d}]", .{self.id});
+        log.info("  Address: {*}", .{self});
+        log.info("  Map address: {*}", .{&self.map});
+        log.info("  Map capacity: {d}", .{self.map.capacity()});
+        log.info("  Map count: {d}", .{self.map.count()});
+
+        var sum: usize = 0;
+        var iter = self.map.iterator();
+        while (iter.next()) |_| {
+            sum += 1;
+        }
+        log.info("  Actual items found: {d}", .{sum});
     }
 };

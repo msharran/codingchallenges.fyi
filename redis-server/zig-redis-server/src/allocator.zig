@@ -15,11 +15,11 @@ var global_init_once = std.once(struct {
 }.callback);
 
 pub fn initGlobal() void {
-    log.debug("Initializing global allocator", .{});
+    log.info("Initializing global allocator", .{});
     global_init_once.call();
 }
 
 pub fn deinitGlobal() void {
     const check = global_gpa.?.deinit();
-    log.debug("Global allocator deinitialized; status={}", .{check});
+    log.info("Global allocator deinitialized; status={}", .{check});
 }

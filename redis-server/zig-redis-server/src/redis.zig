@@ -49,7 +49,7 @@ pub const Server = struct {
 
         const args = fio.fio_start_args{
             .threads = 4,
-            .workers = 4,
+            .workers = 1,
         };
 
         if (fio.fio_listen(.{
