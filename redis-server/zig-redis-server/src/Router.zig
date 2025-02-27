@@ -14,7 +14,9 @@ const command = @import("command.zig");
 const dictionary = @import("dictionary.zig");
 const Dictionary = dictionary.Dictionary;
 const Message = @import("Resp.zig").Message;
-const HandlerFn = *const fn (Request) Message;
+
+const CommandCtx = @import("command.zig").CommandCtx;
+const HandlerFn = *const fn (*CommandCtx) Message;
 const RoutesMap = std.StaticStringMap(HandlerFn);
 const RouterKV = struct { []const u8, HandlerFn };
 
@@ -42,37 +44,23 @@ pub fn initComptime() Self {
 /// Example:
 ///    ["PING"]
 ///    ["ECHO", "hello"]
-pub fn route(self: Self, req: Request) Message {
+pub fn route(self: Self, ctx: *CommandCtx) Message {
     const dict = dictionary.getGlobalPtr();
     log.debug("Routing request with dictionary at {*} containing {d} entries", .{ dict, dict.map.count() });
-    if (req.message.type != .Array) {
+    if (ctx.message.type != .Array) {
         return Message.err("ERR bad request: expected array");
     }
 
-    if (req.message.value.list.items.len < 1) {
+    if (ctx.message.value.list.items.len < 1) {
         return Message.err("ERR bad request: expected at least one item");
     }
 
-    const cmd = req.message.value.list.items[0].value.single;
+    const cmd = ctx.message.value.list.items[0].value.single;
     const cmdFn = self.routes.get(cmd);
 
     if (cmdFn) |c| {
-        return c(req);
+        return c(ctx);
     } else {
         return Message.err("ERR unknown command");
     }
 }
-
-pub const Request = struct {
-    message: Message,
-
-    // arena should be deinitialized by the caller
-    arena: *std.heap.ArenaAllocator,
-
-    pub fn init(arena: *std.heap.ArenaAllocator, m: Message) Request {
-        return Request{
-            .message = m,
-            .arena = arena,
-        };
-    }
-};

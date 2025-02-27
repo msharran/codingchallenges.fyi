@@ -9,7 +9,7 @@ const Dictionary = @import("dictionary.zig").Dictionary;
 const Router = @import("Router.zig");
 const Resp = @import("Resp.zig");
 const Message = Resp.Message;
-const Request = @import("Router.zig").Request;
+const CommandCtx = @import("command.zig").CommandCtx;
 const redis_alloc = @import("allocator.zig");
 
 // const ProtocolPool = std.heap.MemoryPool(Protocol);
@@ -101,27 +101,25 @@ pub const Server = struct {
                 break :blk Message.err("failed to deserialise");
             };
 
-        // Create arena for RESP parsing
-        var arena = std.heap.ArenaAllocator.init(redis_alloc.global.?);
-        defer arena.deinit(); // This will free all RESP-allocated memory
-        const request = Request.init(&arena, msg);
+        var cmd_ctx = CommandCtx.init(redis_alloc.global.?, msg);
+        defer cmd_ctx.deinit();
 
         const router = Router.initComptime();
+        const response = router.route(&cmd_ctx);
 
-        const response_msg = router.route(request);
-        const response_serialised = resp.serialise(response_msg) catch "-Err failed to serialise\r\n";
+        const serialised_response = resp.serialise(response) catch "-Err failed to serialise\r\n";
 
-        const write_buf = redis_alloc.global.?.alloc(u8, response_serialised.len) catch unreachable;
+        const write_buf = redis_alloc.global.?.alloc(u8, serialised_response.len) catch unreachable;
         defer {
             log.debug("Freed write buffer", .{});
             redis_alloc.global.?.free(write_buf);
         }
-        @memcpy(write_buf, response_serialised);
+        @memcpy(write_buf, serialised_response);
 
         const write_buf_c_ptr: ?*anyopaque = @constCast(write_buf.ptr);
         const write_result = fio.write2(uuid, .{
             .data = .{ .buffer = write_buf_c_ptr },
-            .length = response_serialised.len,
+            .length = serialised_response.len,
             .offset = 0,
             .after = .{ .dealloc = (struct {
                 pub fn dealloc(_: ?*anyopaque) void {}
@@ -131,7 +129,7 @@ pub const Server = struct {
             .rsv = false,
             .rsv2 = false,
         });
-        log.debug("Wrote result={d} bytes={d}", .{ write_result, response_serialised.len });
+        log.debug("Wrote result={d} bytes={d}", .{ write_result, serialised_response.len });
     }
 
     fn on_close(uuid: isize, fio_protocol: *fio.fio_protocol_s) callconv(.C) void {

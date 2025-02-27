@@ -4,15 +4,32 @@ const assert = std.debug.assert;
 const expect = std.testing.expect;
 
 const Message = @import("Resp.zig").Message;
-const Request = @import("Router.zig").Request;
 const dictionary = @import("dictionary.zig");
 const Dictionary = dictionary.Dictionary;
 
-pub fn ping(_: Request) Message {
+pub const CommandCtx = struct {
+    message: Message,
+
+    // arena should be deinitialized by the caller
+    arena: std.heap.ArenaAllocator,
+
+    pub fn init(allocator: std.mem.Allocator, m: Message) CommandCtx {
+        return CommandCtx{
+            .message = m,
+            .arena = std.heap.ArenaAllocator.init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *CommandCtx) void {
+        self.arena.deinit();
+    }
+};
+
+pub fn ping(_: *CommandCtx) Message {
     return Message.simpleString("PONG");
 }
 
-pub fn echo(r: Request) Message {
+pub fn echo(r: *CommandCtx) Message {
     const items = r.message.value.list.items;
     if (items.len < 2) {
         return Message.err("ERR bad request: expected at least one argument");
@@ -22,7 +39,7 @@ pub fn echo(r: Request) Message {
     return Message.bulkString(value);
 }
 
-pub fn set(r: Request) Message {
+pub fn set(r: *CommandCtx) Message {
     const items = r.message.value.list.items;
     if (items.len < 3) {
         return Message.err("ERR bad request: expected at least two arguments");
@@ -31,14 +48,13 @@ pub fn set(r: Request) Message {
     const key = items[1].value.single;
     const value = items[2].value.single;
 
-    log.debug("set key: {s}, value: {s}", .{ key, value });
     const dict = dictionary.getGlobalPtr();
     dict.putString(key, value) catch return Message.err("ERR failed to set");
 
     return Message.simpleString("OK");
 }
 
-pub fn get(r: Request) Message {
+pub fn get(r: *CommandCtx) Message {
     const items = r.message.value.list.items;
     if (items.len < 2) {
         return Message.err("ERR bad request: expected at least two arguments");
@@ -48,7 +64,6 @@ pub fn get(r: Request) Message {
 
     const dict = dictionary.getGlobalPtr();
     const value = dict.getString(key);
-    log.debug("get key: {s}, value: {?s}", .{ key, value });
     if (value == null) {
         log.err("ERR key not found", .{});
         return Message.nil();
@@ -57,7 +72,7 @@ pub fn get(r: Request) Message {
     return Message.bulkString(value.?);
 }
 
-pub fn config(r: Request) Message {
+pub fn config(r: *CommandCtx) Message {
     const items = r.message.value.list.items;
     if (items.len < 3) {
         return Message.err("ERR wrong number of arguments for CONFIG GET");
@@ -117,7 +132,7 @@ test "set command" {
 
     const msg = Message.initList(.Array, msg_list);
 
-    const req = Request{
+    const req = CommandCtx{
         .message = msg,
         .dict = obj_store,
     };
@@ -150,7 +165,7 @@ test "set command long string" {
 
     const msg = Message.initList(.Array, msg_list);
 
-    const req = Request{
+    const req = CommandCtx{
         .message = msg,
         .dict = obj_store,
     };
