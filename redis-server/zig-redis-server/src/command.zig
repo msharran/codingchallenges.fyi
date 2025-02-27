@@ -5,7 +5,8 @@ const expect = std.testing.expect;
 
 const Message = @import("Resp.zig").Message;
 const Request = @import("Router.zig").Request;
-const Dictionary = @import("Dictionary.zig");
+const dictionary = @import("dictionary.zig");
+const Dictionary = dictionary.Dictionary;
 
 pub fn ping(_: Request) Message {
     return Message.simpleString("PONG");
@@ -31,15 +32,10 @@ pub fn set(r: Request) Message {
     const value = items[2].value.single;
 
     log.debug("set key: {s}, value: {s}", .{ key, value });
-    r.dict.putString(key, value) catch return Message.err("ERR failed to set");
+    const dict = dictionary.getDefaultPtr();
+    dict.putString(key, value) catch return Message.err("ERR failed to set");
 
     return Message.simpleString("OK");
-}
-
-// my debug function
-pub fn printall(r: Request) Message {
-    r.dict.printAll();
-    return Message.nil();
 }
 
 pub fn get(r: Request) Message {
@@ -50,7 +46,8 @@ pub fn get(r: Request) Message {
 
     const key = items[1].value.single;
 
-    const value = r.dict.getString(key);
+    const dict = dictionary.getDefaultPtr();
+    const value = dict.getString(key);
     log.debug("get key: {s}, value: {?s}", .{ key, value });
     if (value == null) {
         log.err("ERR key not found", .{});

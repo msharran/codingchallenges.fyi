@@ -11,7 +11,7 @@ const log = std.log.scoped(.router);
 const Self = @This();
 
 const command = @import("command.zig");
-const Dictionary = @import("Dictionary.zig");
+const Dictionary = @import("dictionary.zig").Dictionary;
 const Message = @import("Resp.zig").Message;
 const HandlerFn = *const fn (Request) Message;
 const RoutesMap = std.StaticStringMap(HandlerFn);
@@ -26,7 +26,6 @@ pub fn initComptime() Self {
         .{ "ECHO", command.echo },
         .{ "SET", command.set },
         .{ "GET", command.get },
-        .{ "PRINTALL", command.printall },
         .{ "CONFIG", command.config },
     };
     return Self{
@@ -63,17 +62,14 @@ pub fn route(self: Self, req: Request) Message {
 
 pub const Request = struct {
     message: Message,
-    dict: *Dictionary,
-
     // used for list type of response
     arena: *std.heap.ArenaAllocator,
 
-    pub fn init(allocator: std.mem.Allocator, m: Message, d: *Dictionary) Request {
+    pub fn init(allocator: std.mem.Allocator, m: Message) Request {
         const arena = allocator.create(std.heap.ArenaAllocator) catch unreachable;
         arena.* = std.heap.ArenaAllocator.init(allocator);
         return Request{
             .message = m,
-            .dict = d,
             .arena = arena,
         };
     }
