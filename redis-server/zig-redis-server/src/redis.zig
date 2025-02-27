@@ -49,6 +49,7 @@ pub const Server = struct {
 
         const args = fio.fio_start_args{
             .threads = 4,
+            // TODO: BUG - worker > 1 causes dictionary to be reset inbetween requests.
             .workers = 1,
         };
 
