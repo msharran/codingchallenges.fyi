@@ -1,57 +1,70 @@
-# Redis Server
+# Zig Redis Server
 
-# Features
+A Redis-compatible server implementation in Zig using the RESP protocol.
 
-- RESP Protocol Serialisation and Deserialisation (Simple String, Bulk String, Integer, Error, Nil)
-- Commands Supported: PING, ECHO, SET, GET
-- Non Blocking IO for accepting connections: uses libxev
-- ThreadPool strategy for handling connections concurrently in multiple threads
+## Features
 
-# Getting Started
+- RESP Protocol Implementation
+  - Supports Simple String, Bulk String, Integer, Error and Nil types
+  - Full serialization/deserialization
 
-## Start server
+- Core Redis Commands
+  - PING - Server test command
+  - ECHO - Echo back input
+  - GET/SET - Basic key-value operations
 
-```sh
-❯ ./zig-out/bin/redis-server
-info(server): Starting Redis Server at port 6377
-^Cinfo(dictionary):   Dictionary state: [1]
-info(dictionary):     Map capacity: 0
-info(dictionary):     Map count: 0
-info(dictionary):   Actual items found: 0
+- Architecture
+  - Non-blocking I/O using Facil.io
+  - Thread pool for concurrent request handling
+  - In-memory key-value store with read-write locking
+  - Arena allocator for efficient memory management
+
+## Usage
+
+### Build from source
+
+```bash
+# Build an optimized binary (ReleaseFast mode)
+make
+
+# Start the server (default port: 6377)
+./zig-out/bin/redis-server
 ```
 
-## Connect to server using `redis-cli`
+### Connect with redis-cli
 
-```sh
-❯ redis-cli -p 6377 PING
-PONG
-❯ redis-cli -p 6377 ECHO "Hello World!"
-"Hello World!"
-❯ redis-cli -p 6377 GET foo
-(nil)
-❯ redis-cli -p 6377 SET foo bar
-OK
-❯ redis-cli -p 6377 GET foo
-"bar"
+```bash
+# Basic commands
+redis-cli -p 6377 PING
+> PONG
 
-❯ redis-benchmark -p 6377 -t SET,GET -q
-WARNING: Could not fetch server CONFIG
-SET: 17513.13 requests per second, p50=2.647 msec
-GET: 22867.60 requests per second, p50=2.007 msec
+redis-cli -p 6377 ECHO "Hello World"
+> "Hello World"
+
+redis-cli -p 6377 SET mykey "Hello"
+> OK
+
+redis-cli -p 6377 GET mykey
+> "Hello"
+
+# Run benchmarks
+redis-benchmark -p 6377 -t SET,GET -q
+> SET: 17513.13 requests per second, p50=2.647 msec
+> GET: 22867.60 requests per second, p50=2.007 msec
 ```
 
-## All supported commands
+## Development
 
-![image](./images/commands.png)
+```bash
+# Build for development,
+# then run the server from the executable directory
+zig build -freference-trace
+./zig-out/bin/redis-server
 
----
-
-# References
-
-- [TCP Server in Zig](https://www.openmymind.net/TCP-Server-In-Zig-Part-1-Single-Threaded/)
-- [Redis Protocol](https://redis.io/docs/latest/develop/reference/protocol-spec/#resp-protocol-description)
-- [Coding Challenge: Implement a Redis Server](https://codingchallenges.fyi/challenges/challenge-redis/)
-
+# Build and run for development
+zig build run
 ```
-/home/msharran/.local/share/zed/remote_extensions/work/zig/zls-0.13.0/zls
-```
+
+## License
+
+MIT
