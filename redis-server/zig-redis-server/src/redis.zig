@@ -48,8 +48,11 @@ pub const Server = struct {
         log.debug("starting server svr_addr={*}", .{self});
 
         const args = fio.fio_start_args{
-            .threads = 4,
-            // TODO: BUG - worker > 1 causes dictionary to be reset inbetween requests.
+            .threads = 5,
+            // The number of worker processes to run (in addition to a root process)
+            // This invokes facil.io's cluster mode, where a crashed worker will be automatically re-spawned and "hot restart" is enabled (using the USR1 signal).
+            // Ref: https://facil.io/0.7.x/fio#running-facil-io
+            // NOTE: If we use multiple workers, our dictionary will not be shared since each worker has its own memory space.
             .workers = 1,
         };
 
