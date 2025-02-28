@@ -2,6 +2,9 @@
 
 A Redis-compatible server implementation in Zig using the RESP protocol.
 
+> This implementation has been featured in the [official solutions list](https://github.com/CodingChallengesFYI/SharedSolutions/blob/main/Solutions/challenge-redis.md)
+> for the "Build Your Own Redis" coding challenge.
+
 ## Features
 
 - RESP Protocol Implementation
