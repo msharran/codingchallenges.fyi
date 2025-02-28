@@ -11,8 +11,7 @@ const log = std.log.scoped(.router);
 const Self = @This();
 
 const command = @import("command.zig");
-const dictionary = @import("dictionary.zig");
-const Dictionary = dictionary.Dictionary;
+const Dictionary = @import("dictionary.zig").Dictionary;
 const Message = @import("Resp.zig").Message;
 
 const CommandCtx = @import("command.zig").CommandCtx;
@@ -36,6 +35,11 @@ pub fn initComptime() Self {
     };
 }
 
+pub fn deinit(self: *Self) void {
+    self.routes = undefined;
+    self.* = undefined;
+}
+
 /// Routes the message to the appropriate handler.
 /// Looks up the command in the store and calls the handler.
 /// msg will always be an array
@@ -45,8 +49,6 @@ pub fn initComptime() Self {
 ///    ["PING"]
 ///    ["ECHO", "hello"]
 pub fn route(self: Self, ctx: *CommandCtx) Message {
-    const dict = dictionary.getGlobalPtr();
-    log.debug("Routing request with dictionary at {*} containing {d} entries", .{ dict, dict.map.count() });
     if (ctx.message.type != .Array) {
         return Message.err("ERR bad request: expected array");
     }

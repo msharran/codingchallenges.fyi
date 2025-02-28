@@ -11,9 +11,8 @@ pub const std_options = .{
 };
 
 pub fn main() !void {
-    var redis_server = try redis.Server.init();
-    defer redis_server.deinit();
+    redis.init();
+    defer redis.deinit();
 
-    log.info("Server initialised", .{});
-    try redis_server.start();
+    try redis.start();
 }

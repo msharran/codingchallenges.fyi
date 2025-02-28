@@ -1,35 +1,9 @@
 const std = @import("std");
 const log = std.log.scoped(.dictionary);
-const redis_alloc = @import("allocator.zig");
 
-var global_dict: ?Dictionary = null;
-var global_init_once = std.once(struct {
-    fn callback() void {
-        global_dict = Dictionary.init(redis_alloc.global.?) catch unreachable;
-    }
-}.callback);
-
+// used for tracking if the dictionary is initialized
+// many times
 var next_id: u32 = 0;
-
-pub fn initGlobal() void {
-    log.info("Initializing global dictionary", .{});
-    global_init_once.call();
-}
-
-pub fn deinitGlobal() void {
-    log.info("Deinitializing global dictionary", .{});
-    const dict = getGlobalPtr();
-    dict.printStateInfo();
-    dict.deinit();
-}
-
-// panic if default is not initialized
-pub fn getGlobalPtr() *Dictionary {
-    if (global_dict == null) {
-        @panic("Dictionary not initialized");
-    }
-    return &global_dict.?;
-}
 
 pub const Dictionary = struct {
     const RwLock = std.Thread.RwLock;
@@ -149,11 +123,9 @@ pub const Dictionary = struct {
     }
 
     pub fn printStateInfo(self: *Dictionary) void {
-        log.info("Dictionary state: [{d}]", .{self.id});
-        log.info("  Address: {*}", .{self});
-        log.info("  Map address: {*}", .{&self.map});
-        log.info("  Map capacity: {d}", .{self.map.capacity()});
-        log.info("  Map count: {d}", .{self.map.count()});
+        log.info("  Dictionary state: [{d}]", .{self.id});
+        log.info("    Map capacity: {d}", .{self.map.capacity()});
+        log.info("    Map count: {d}", .{self.map.count()});
 
         var sum: usize = 0;
         var iter = self.map.iterator();
