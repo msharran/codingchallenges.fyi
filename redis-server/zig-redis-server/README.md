@@ -12,22 +12,12 @@
 ## Start server
 
 ```sh
-❯ zig build run
-info(redis): Server initialised
-info(server): Server listening on 127.0.0.1:6377
-info(server): Client connected: 127.0.0.1:49803
-debug(resp): Serialised: +PONG
-
-info(server): Client connection closed: 127.0.0.1:49803
-info(server): Client connected: 127.0.0.1:49823
-debug(resp): Serialised: $12
-Hello World!
-
-info(server): Client connection closed: 127.0.0.1:49823
-info(server): Client connected: 127.0.0.1:49841
-debug(resp): Serialised: +OK
-
-info(server): Client connection closed: 127.0.0.1:49841
+❯ ./zig-out/bin/redis-server
+info(server): Starting Redis Server at port 6377
+^Cinfo(dictionary):   Dictionary state: [1]
+info(dictionary):     Map capacity: 0
+info(dictionary):     Map count: 0
+info(dictionary):   Actual items found: 0
 ```
 
 ## Connect to server using `redis-cli`
@@ -43,6 +33,11 @@ PONG
 OK
 ❯ redis-cli -p 6377 GET foo
 "bar"
+
+❯ redis-benchmark -p 6377 -t SET,GET -q
+WARNING: Could not fetch server CONFIG
+SET: 17513.13 requests per second, p50=2.647 msec
+GET: 22867.60 requests per second, p50=2.007 msec
 ```
 
 ## All supported commands
