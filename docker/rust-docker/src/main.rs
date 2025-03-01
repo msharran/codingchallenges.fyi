@@ -1,5 +1,5 @@
 use nix::sched::CloneFlags;
-use nix::{self, sched};
+use nix::{self};
 use nix::{
     sys::wait::waitpid,
     unistd::{fork, write, ForkResult},
@@ -49,9 +49,9 @@ fn run() -> Result<(), String> {
             let pid = process::id();
             write_stdout(format!("I'm a new child process with pid {pid}\n"));
 
-            // Move the current process into a namespace. We can do this 
+            // Move the current process into a namespace. We can do this
             // by unsharing its CLONE_* flags.
-            nix::sched::unshare(CloneFlags::CLONE_NEWUTS|CloneFlags::CLONE_NEWPID)
+            nix::sched::unshare(CloneFlags::CLONE_NEWUTS | CloneFlags::CLONE_NEWPID)
                 .map_err(|e| format!("Failed to unshare UTS namespace: {}", e))?;
 
             // change hostname
@@ -61,15 +61,15 @@ fn run() -> Result<(), String> {
             nix::unistd::chroot("/alpine-root")
                 .map_err(|e| format!("Failed to change root: {}", e))?;
 
-            let child = process::Command::new(&args[1])
+            let command = process::Command::new(&args[1])
                 .args(&args[2..])
                 .stdin(process::Stdio::inherit())
                 .stdout(process::Stdio::inherit())
                 .stderr(process::Stdio::inherit())
                 .spawn();
-            match child {
-                Ok(mut child) => {
-                    child.wait().expect("command wasn't running");
+            match command {
+                Ok(mut command) => {
+                    command.wait().expect("command wasn't running");
                     write_stdout(format!("Child has finished its execution!\n"));
                 }
                 Err(e) => {
