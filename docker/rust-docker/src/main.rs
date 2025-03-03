@@ -55,7 +55,7 @@ fn run() -> Result<(), String> {
                 .map_err(|e| format!("Failed to unshare UTS namespace: {}", e))?;
 
             // change hostname
-            nix::unistd::sethostname("inside-container")
+            nix::unistd::sethostname("container")
                 .map_err(|e| format!("Failed to set hostname: {}", e))?;
             // change root
             nix::unistd::chroot("/alpine-root")
