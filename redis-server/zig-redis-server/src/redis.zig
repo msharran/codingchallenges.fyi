@@ -37,7 +37,7 @@ pub fn deinit() void {
 /// Will start listeners etc.
 pub fn start() !void {
     const args = fio.fio_start_args{
-        .threads = 10,
+        .threads = 4,
         // The number of worker processes to run (in addition to a root process)
         // This invokes facil.io's cluster mode, where a crashed worker will be automatically re-spawned and "hot restart" is enabled (using the USR1 signal).
         // Ref: https://facil.io/0.7.x/fio#running-facil-io

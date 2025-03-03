@@ -12,12 +12,6 @@ pub fn benchmarkRespSerDe() !void {
     };
 
     const start = std.time.nanoTimestamp();
-    // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    // defer {
-    //     const leak = gpa.deinit();
-    //     std.debug.print("Memory leak status: {}\n", .{leak});
-    // }
-    // const alloc = gpa.allocator();
 
     for (0..iterations) |_| {
         for (sample_commands) |cmd| {
