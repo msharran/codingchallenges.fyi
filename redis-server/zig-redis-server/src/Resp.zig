@@ -140,7 +140,7 @@ pub fn deserialise(self: *Resp, raw: []const u8) !Message {
 
             return Message.init(data_type, string_part);
         },
-        DataType.Array => {
+        .Array => {
             const raw_msgs = try self.getArrayItems(raw);
 
             // init an array list of messages

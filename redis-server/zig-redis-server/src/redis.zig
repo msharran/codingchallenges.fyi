@@ -37,7 +37,7 @@ pub fn deinit() void {
 /// Will start listeners etc.
 pub fn start() !void {
     const args = fio.fio_start_args{
-        .threads = 5,
+        .threads = 10,
         // The number of worker processes to run (in addition to a root process)
         // This invokes facil.io's cluster mode, where a crashed worker will be automatically re-spawned and "hot restart" is enabled (using the USR1 signal).
         // Ref: https://facil.io/0.7.x/fio#running-facil-io
@@ -71,20 +71,24 @@ fn on_open(uuid: isize, _: ?*anyopaque) callconv(.C) void {
 fn on_data(uuid: isize, _: *fio.fio_protocol_s) callconv(.C) void {
     const dict = Global.dictionary();
 
+    var buf: [4096]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const allocator = fba.allocator();
+
     log.debug("Handling data on connection {d} with dictionary at {*}", .{ uuid, dict });
     defer log.debug("Finished handling data on connection {d}", .{uuid});
 
     // Allocate read buffer on the heap
-    const read_buffer = Global.allocator.?.alloc(u8, 1024) catch |err| {
+    const read_buffer = allocator.alloc(u8, 1024) catch |err| {
         log.err("failed to allocate read buffer: {}", .{err});
         return;
     };
-    defer Global.allocator.?.free(read_buffer);
+    defer allocator.free(read_buffer);
 
     const read_buffer_ptr: ?*anyopaque = @ptrCast(read_buffer);
     const read: usize = @intCast(fio.fio_read(uuid, read_buffer_ptr, read_buffer.len));
 
-    var resp = Resp.init(Global.allocator.?);
+    var resp = Resp.init(allocator);
     defer resp.deinit();
 
     const msg = if (read == 0)
@@ -101,10 +105,10 @@ fn on_data(uuid: isize, _: *fio.fio_protocol_s) callconv(.C) void {
     const response = Global.router().route(&cmd_ctx);
     const serialised_response = resp.serialise(response) catch "-Err failed to serialise\r\n";
 
-    const write_buf = Global.allocator.?.alloc(u8, serialised_response.len) catch unreachable;
+    const write_buf = allocator.alloc(u8, serialised_response.len) catch unreachable;
     defer {
         log.debug("Freed write buffer", .{});
-        Global.allocator.?.free(write_buf);
+        allocator.free(write_buf);
     }
     @memcpy(write_buf, serialised_response);
 

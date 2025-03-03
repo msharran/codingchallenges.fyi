@@ -49,11 +49,39 @@ redis-cli -p 6377 SET mykey "Hello"
 
 redis-cli -p 6377 GET mykey
 > "Hello"
+```
 
-# Run benchmarks
-redis-benchmark -p 6377 -t SET,GET -q
-> SET: 17513.13 requests per second, p50=2.647 msec
-> GET: 22867.60 requests per second, p50=2.007 msec
+## Benchmarks
+
+**Before Optimisation**
+
+When RESP parsing and connection read and write operations happened using Heap allocated
+buffer,
+
+```bash
+❯ redis-benchmark -p 6377 -t SET,GET -q
+WARNING: Could not fetch server CONFIG
+SET: 17513.13 requests per second, p50=2.647 msec
+GET: 22867.60 requests per second, p50=2.007 msec
+```
+
+**After Optimisation**
+
+Uses Fixed Buffer allocator to allocate on Stack,
+
+```zig
+fn on_data(uuid: isize, _: *fio.fio_protocol_s) callconv(.C) void {
+    var buf: [4096]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const allocator = fba.allocator();
+    // rest of the code...
+```
+
+```bash
+❯ redis-benchmark -p 6377 -t SET,GET -q
+WARNING: Could not fetch server CONFIG
+SET: 107526.88 requests per second, p50=0.239 msec
+GET: 90171.33 requests per second, p50=0.303 msec
 ```
 
 ## Development
