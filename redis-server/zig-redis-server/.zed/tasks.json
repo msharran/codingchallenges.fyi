@@ -3,8 +3,8 @@
 // Example:
 [
     {
-        "label": "zig build run",
-        "command": "zig build run --summary none",
+        "label": "Run Redis",
+        "command": "make redis/run",
         //"args": []
         // Env overrides for the command, will be appended to the terminal's environment from the settings.
         // "env": { "foo": "bar" },

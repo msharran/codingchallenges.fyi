@@ -103,17 +103,17 @@ pub fn benchmarkRespSer() !void {
     std.debug.print("Serialization speed: {d:.2} ops/sec\n", .{ops_per_sec});
 }
 
-test "bench_resp_serde" {
+test "bench_resp_parsing" {
     try benchmarkRespSerDe();
     std.debug.print("=======================\n", .{});
 }
 
-test "bench_resp_ser" {
+test "bench_resp_serialization" {
     try benchmarkRespSer();
     std.debug.print("=======================\n", .{});
 }
 
-test "bench_resp_de" {
+test "bench_resp_deserialization" {
     try benchmarkRespDe();
     std.debug.print("=======================\n", .{});
 }

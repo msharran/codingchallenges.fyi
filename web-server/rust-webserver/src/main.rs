@@ -1,7 +1,7 @@
 mod web;
 use log::{error, info};
-use stderrlog::LogLevelNum;
 use std::net::TcpListener;
+use stderrlog::LogLevelNum;
 use web::TcpConnManager;
 
 fn main() {
@@ -12,7 +12,7 @@ fn main() {
         .unwrap();
 
     let socket = TcpListener::bind("127.0.0.1:8080").unwrap();
-    info!("Socket listening on {}", 8080); 
+    info!("Socket listening on {}", 8080);
 
     for stream in socket.incoming() {
         match stream {
@@ -20,8 +20,8 @@ fn main() {
                 error!("Cannot establish connection, {e:?}");
                 continue;
             }
-            Ok(mut s) => {
-                let mut mgr = TcpConnManager::from(&mut s);
+            Ok(s) => {
+                let mut mgr = TcpConnManager::from(s);
                 mgr.handle_connection();
             }
         };

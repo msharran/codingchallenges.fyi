@@ -3,13 +3,13 @@ use http::{HttpRequest, HttpResponse};
 use log::info;
 use std::{collections::HashMap, fs, net::TcpStream};
 
-pub struct TcpConnManager<'a> {
-    stream: &'a mut TcpStream,
+pub struct TcpConnManager {
+    stream: TcpStream,
     html_files: HashMap<String, String>, // name -> content
 }
 
-impl<'a> TcpConnManager<'a> {
-    pub fn from(stream: &'a mut TcpStream) -> Self {
+impl TcpConnManager {
+    pub fn from(stream: TcpStream) -> Self {
         let mut html_files = HashMap::new();
         let index_content =
             fs::read_to_string("www/index.html").expect("Unable to read index.html");
@@ -42,7 +42,10 @@ impl<'a> TcpConnManager<'a> {
             _ => HttpResponse::not_found("Page not found".to_string()),
         };
 
-        response.write_all(self.stream);
-        info!("{} {} {}", http_request.method, http_request.uri, response.status_code);
+        response.write_all(&mut self.stream);
+        info!(
+            "{} {} {}",
+            http_request.method, http_request.uri, response.status_code
+        );
     }
 }

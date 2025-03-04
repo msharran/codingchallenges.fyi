@@ -38,11 +38,10 @@ impl HttpResponse {
     }
 }
 
-
 #[derive(Debug)]
 pub struct HttpRequest {
     // headers: HashMap<String, String>,
-    pub version: String,
+    // pub version: String,
     pub uri: String,
     pub method: String,
 }
