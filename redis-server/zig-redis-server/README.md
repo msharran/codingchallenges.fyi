@@ -108,14 +108,13 @@ SET: 140449.44 requests per second, p50=0.183 msec
 GET: 142450.14 requests per second, p50=0.183 msec
 ```
 
+## Performance Benchmarks
 
-# Performance Benchmarks
-
-## Benchmark Comparison: Zig Redis Server vs Original Redis
+### Benchmark Comparison: Zig Redis Server vs Original Redis
 
 This comparison measures the performance of this Zig Redis implementation against the official Redis server using `redis-benchmark`.
 
-### Latest Benchmark Results
+#### Latest Benchmark Results
 
 | Server | Command | Requests/sec | Latency (p50) |
 |--------|---------|--------------|---------------|
@@ -124,23 +123,23 @@ This comparison measures the performance of this Zig Redis implementation agains
 | Zig Redis (6377) | GET | 142,450.14 | 0.183 ms |
 | Original Redis (6379) | GET | 140,646.97 | 0.183 ms |
 
-## Performance Evolution
+### Performance Evolution
 
 This Zig implementation has shown significant improvements through optimization:
 
-### Initial Implementation
+#### Initial Implementation
 ```
 SET: 17,513.13 requests per second, p50=2.647 msec
 GET: 22,867.60 requests per second, p50=2.007 msec
 ```
 
-### After Stack Allocation Optimization
+#### After Stack Allocation Optimization
 ```
 SET: 107,526.88 requests per second, p50=0.239 msec
 GET: 90,171.33 requests per second, p50=0.303 msec
 ```
 
-### Current Implementation
+#### Current Implementation
 ```
 SET: 140,449.44 requests per second, p50=0.183 msec
 GET: 142,450.14 requests per second, p50=0.183 msec
@@ -148,7 +147,7 @@ GET: 142,450.14 requests per second, p50=0.183 msec
 
 This represents an **8x improvement** for SET operations and a **6.2x improvement** for GET operations from the initial implementation.
 
-## Analysis
+### Analysis
 
 - The Zig implementation achieves approximately 96% of Redis's performance for SET operations
 - For GET operations, the Zig implementation slightly outperforms Redis by about 1.3%
