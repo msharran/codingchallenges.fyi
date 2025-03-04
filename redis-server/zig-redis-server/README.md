@@ -51,12 +51,14 @@ redis-cli -p 6377 GET mykey
 > "Hello"
 ```
 
-## Benchmarks
+## Optimizations
+
+### Memory I/O Optimisation
 
 **Before Optimisation**
 
-When RESP parsing and connection read and write operations happened using Heap allocated
-buffer,
+Moved from RESP parsing and connection read and write operations using Heap allocated
+buffer to Fixed Buffer allocator to allocate on Stack,
 
 ```bash
 ❯ redis-benchmark -p 6377 -t SET,GET -q
@@ -67,7 +69,6 @@ GET: 22867.60 requests per second, p50=2.007 msec
 
 **After Optimisation**
 
-Uses Fixed Buffer allocator to allocate on Stack,
 
 ```zig
 fn on_data(uuid: isize, _: *fio.fio_protocol_s) callconv(.C) void {
@@ -83,6 +84,77 @@ WARNING: Could not fetch server CONFIG
 SET: 107526.88 requests per second, p50=0.239 msec
 GET: 90171.33 requests per second, p50=0.303 msec
 ```
+
+## Lock Free Single Threaded
+
+Moved from Multi Threaded Non Blocking Evented I/O with
+Locks on global dictionary to Lock Free Single Threaded design
+
+**Before Optimisation**
+
+```bash
+❯ redis-benchmark -p 6377 -t SET,GET -q
+WARNING: Could not fetch server CONFIG
+SET: 107526.88 requests per second, p50=0.239 msec
+GET: 90171.33 requests per second, p50=0.303 msec
+```
+
+**After Optimisation**
+
+```bash
+❯ redis-benchmark -p 6377 -t SET,GET -q
+WARNING: Could not fetch server CONFIG
+SET: 140449.44 requests per second, p50=0.183 msec
+GET: 142450.14 requests per second, p50=0.183 msec
+```
+
+
+# Performance Benchmarks
+
+## Benchmark Comparison: Zig Redis Server vs Original Redis
+
+This comparison measures the performance of this Zig Redis implementation against the official Redis server using `redis-benchmark`.
+
+### Latest Benchmark Results
+
+| Server | Command | Requests/sec | Latency (p50) |
+|--------|---------|--------------|---------------|
+| Zig Redis (6377) | SET | 140,449.44 | 0.183 ms |
+| Original Redis (6379) | SET | 146,198.83 | 0.175 ms |
+| Zig Redis (6377) | GET | 142,450.14 | 0.183 ms |
+| Original Redis (6379) | GET | 140,646.97 | 0.183 ms |
+
+## Performance Evolution
+
+This Zig implementation has shown significant improvements through optimization:
+
+### Initial Implementation
+```
+SET: 17,513.13 requests per second, p50=2.647 msec
+GET: 22,867.60 requests per second, p50=2.007 msec
+```
+
+### After Stack Allocation Optimization
+```
+SET: 107,526.88 requests per second, p50=0.239 msec
+GET: 90,171.33 requests per second, p50=0.303 msec
+```
+
+### Current Implementation
+```
+SET: 140,449.44 requests per second, p50=0.183 msec
+GET: 142,450.14 requests per second, p50=0.183 msec
+```
+
+This represents an **8x improvement** for SET operations and a **6.2x improvement** for GET operations from the initial implementation.
+
+## Analysis
+
+- The Zig implementation achieves approximately 96% of Redis's performance for SET operations
+- For GET operations, the Zig implementation slightly outperforms Redis by about 1.3%
+- The current implementation is effectively at performance parity with the official Redis server
+
+These benchmarks were conducted on the same hardware using identical benchmark parameters.
 
 ## Development
 

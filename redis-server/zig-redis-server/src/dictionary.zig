@@ -58,8 +58,8 @@ pub const Dictionary = struct {
     }
 
     pub fn putString(self: *Dictionary, key: []const u8, value: []const u8) !void {
-        self.rwlock.lock();
-        defer self.rwlock.unlock();
+        // self.rwlock.lock();
+        // defer self.rwlock.unlock();
 
         log.debug("PUT: Dictionary[{d}] key='{s}' value='{s}'", .{ self.id, key, value });
 
@@ -89,12 +89,11 @@ pub const Dictionary = struct {
         try self.map.put(key_copy, Value{ .string = value_copy });
         log.debug("Added new key '{s}' with value", .{key});
 
-        self.debugDictionaryState();
     }
 
     pub fn getString(self: *Dictionary, key: []const u8) ?[]const u8 {
-        self.rwlock.lockShared();
-        defer self.rwlock.unlockShared();
+        // self.rwlock.lockShared();
+        // defer self.rwlock.unlockShared();
 
         log.debug("GET: Dictionary[{d}] key='{s}'", .{ self.id, key });
 
