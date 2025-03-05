@@ -1,13 +1,21 @@
-use nix::sched::CloneFlags;
 use nix::{self};
 use nix::{
     sys::wait::waitpid,
-    unistd::{fork, write, ForkResult},
+    unistd::{fork, ForkResult},
 };
 use std::{
     env,
     process::{self, ExitCode},
 };
+
+mod io {
+    // Unsafe to use `println!` (or `unwrap`) here. See Safety.
+    pub fn write_stdout(msg: String) {
+        nix::unistd::write(std::io::stdout(), msg.as_bytes()).ok();
+    }
+}
+
+mod container;
 
 const PKG_NAME: &str = env!("CARGO_PKG_NAME");
 
@@ -16,7 +24,7 @@ fn main() -> ExitCode {
         Ok(_) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("{}: {}", PKG_NAME, e);
-            ExitCode::FAILURE
+            ExitCode::from(1)
         }
     }
 }
@@ -28,13 +36,15 @@ fn run() -> Result<(), String> {
         return Err("No command given".to_string());
     }
 
-    // clone a new process with /proc/self/exe into UTS namespace
-    // then change hostname inside the namespace
-    // then run the given command
-
     let pid = process::id();
     println!("My PID {}", pid);
 
+    // This function implements the main logic of the program.
+    // It forks the process to create a child that will run in a container.
+    // The parent process waits for the child to complete.
+    // Below we use fork() which is unsafe as it creates a completely new process.
+    // After fork() we have two processes running the same code, but the fork() call
+    // returns different values to each process so they can tell which is which.
     match unsafe { fork() } {
         Ok(ForkResult::Parent { child, .. }) => {
             println!(
@@ -45,47 +55,10 @@ fn run() -> Result<(), String> {
             println!("Parent execution done")
         }
         Ok(ForkResult::Child) => {
-            // child process created
-            let pid = process::id();
-            write_stdout(format!("I'm a new child process with pid {pid}\n"));
-
-            // Move the current process into a namespace. We can do this
-            // by unsharing its CLONE_* flags.
-            nix::sched::unshare(CloneFlags::CLONE_NEWUTS | CloneFlags::CLONE_NEWPID)
-                .map_err(|e| format!("Failed to unshare UTS namespace: {}", e))?;
-
-            // change hostname
-            nix::unistd::sethostname("container")
-                .map_err(|e| format!("Failed to set hostname: {}", e))?;
-            // change root
-            nix::unistd::chroot("/alpine-root")
-                .map_err(|e| format!("Failed to change root: {}", e))?;
-
-            let command = process::Command::new(&args[1])
-                .args(&args[2..])
-                .stdin(process::Stdio::inherit())
-                .stdout(process::Stdio::inherit())
-                .stderr(process::Stdio::inherit())
-                .spawn();
-            match command {
-                Ok(mut command) => {
-                    command.wait().expect("command wasn't running");
-                    write_stdout(format!("Child has finished its execution!\n"));
-                }
-                Err(e) => {
-                    write_stdout(format!("Failed to execute command: {}\n", e));
-                }
-            }
-
-            unsafe { nix::libc::exit(0) };
+            container::move_process_to_namespace(&args).unwrap();
         }
         Err(_) => println!("Fork failed"),
     };
 
     Ok(())
-}
-
-// Unsafe to use `println!` (or `unwrap`) here. See Safety.
-fn write_stdout(msg: String) {
-    write(std::io::stdout(), msg.as_bytes()).ok();
 }
