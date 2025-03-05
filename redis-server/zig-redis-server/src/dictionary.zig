@@ -13,13 +13,6 @@ pub const Dictionary = struct {
 
     allocator: std.mem.Allocator,
 
-    /// This can be performant compared to mutex in this
-    /// case because reads are allowed to happen concurrently
-    /// if there are no writes happening.
-    /// Only the write lock is exclusive.
-    /// Ref: https://pedropark99.github.io/zig-book/Chapters/14-threads.html#using-readwrite-locks-in-zig
-    rwlock: *RwLock,
-
     /// A tagged union that represents a Redis object.
     /// Tagged unions seems to be a good fit for this kind of data.
     /// Ref: https://zig.news/edyu/zig-unionenum-wtf-is-switchunionenum-2e02
@@ -33,19 +26,14 @@ pub const Dictionary = struct {
 
     pub fn init(allocator: std.mem.Allocator) !Dictionary {
         next_id += 1;
-        const lock = try allocator.create(RwLock);
-        lock.* = RwLock{};
         return .{
             .id = next_id,
             .allocator = allocator,
             .map = StringValueHashMap.init(allocator),
-            .rwlock = lock,
         };
     }
 
     pub fn deinit(self: *Dictionary) void {
-        self.allocator.destroy(self.rwlock);
-
         var iter = self.map.iterator();
         while (iter.next()) |kv| {
             log.debug("Freeing key: {s}", .{kv.key_ptr.*});
@@ -58,9 +46,6 @@ pub const Dictionary = struct {
     }
 
     pub fn putString(self: *Dictionary, key: []const u8, value: []const u8) !void {
-        // self.rwlock.lock();
-        // defer self.rwlock.unlock();
-
         log.debug("PUT: Dictionary[{d}] key='{s}' value='{s}'", .{ self.id, key, value });
 
         // First check if key exists
@@ -88,13 +73,9 @@ pub const Dictionary = struct {
 
         try self.map.put(key_copy, Value{ .string = value_copy });
         log.debug("Added new key '{s}' with value", .{key});
-
     }
 
     pub fn getString(self: *Dictionary, key: []const u8) ?[]const u8 {
-        // self.rwlock.lockShared();
-        // defer self.rwlock.unlockShared();
-
         log.debug("GET: Dictionary[{d}] key='{s}'", .{ self.id, key });
 
         if (self.map.get(key)) |value| {

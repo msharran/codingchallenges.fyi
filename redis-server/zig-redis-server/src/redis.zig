@@ -58,7 +58,7 @@ pub fn start() !void {
 
 fn on_open(uuid: isize, _: ?*anyopaque) callconv(.C) void {
     // allocate fio_proto
-    const fio_proto = Global.allocator.?.create(fio.fio_protocol_s) catch unreachable;
+    const fio_proto = Global.allocator.create(fio.fio_protocol_s) catch unreachable;
     fio_proto.* = fio.fio_protocol_s{
         .on_data = on_data,
         .on_close = on_close,
@@ -99,7 +99,7 @@ fn on_data(uuid: isize, _: *fio.fio_protocol_s) callconv(.C) void {
             break :blk Message.err("failed to deserialise");
         };
 
-    var cmd_ctx = CommandCtx.init(Global.allocator.?, msg);
+    var cmd_ctx = CommandCtx.init(Global.allocator, msg);
     defer cmd_ctx.deinit();
 
     const response = Global.router().route(&cmd_ctx);
@@ -132,5 +132,5 @@ fn on_close(uuid: isize, fio_protocol: *fio.fio_protocol_s) callconv(.C) void {
     // get the parent ptr, ie Protocol from fio_protocol
     log.debug("Connection {d} closed. fio_protocol_addr={*}", .{ uuid, fio_protocol });
     // deinit self
-    Global.allocator.?.destroy(fio_protocol);
+    Global.allocator.destroy(fio_protocol);
 }

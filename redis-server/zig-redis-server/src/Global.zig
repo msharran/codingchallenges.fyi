@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const assert = std.debug.assert;
 const Router = @import("Router.zig");
 const Dictionary = @import("dictionary.zig").Dictionary;
@@ -15,18 +16,40 @@ const log = std.log.scoped(.global);
 const Self = @This();
 
 /// Allocator
-pub const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator(.{
-    .stack_trace_frames = 0,
-});
+pub const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator(.{});
 
 var gpa: ?GeneralPurposeAllocator = null;
-pub var allocator: ?std.mem.Allocator = null;
+pub var allocator: std.mem.Allocator = undefined;
 
 var allocator_init_once = std.once(struct {
     fn callback() void {
         log.debug("Initializing GPA", .{});
-        gpa = GeneralPurposeAllocator{};
-        allocator = gpa.?.allocator();
+
+        gpa = gpa: {
+            // Use the libc allocator if it is available because it is WAY
+            // faster than GPA. We only do this in release modes so that we
+            // can get easy memory leak detection in debug modes.
+            if (builtin.link_libc) {
+                if (switch (builtin.mode) {
+                    .ReleaseSafe, .ReleaseFast => true,
+
+                    // We also use it if we can detect we're running under
+                    // Valgrind since Valgrind only instruments the C allocator
+                    else => std.valgrind.runningOnValgrind() > 0,
+                }) break :gpa null;
+            }
+            break :gpa GeneralPurposeAllocator{};
+        };
+
+        if (gpa) |*value| {
+            log.info("Using GPA", .{});
+            allocator = value.allocator();
+        } else if (builtin.link_libc) {
+            log.info("Using libc allocator", .{});
+            allocator = std.heap.c_allocator;
+        } else {
+            unreachable;
+        }
     }
 }.callback);
 
@@ -35,12 +58,14 @@ pub fn initAllocator() void {
 }
 
 pub fn deinitAllocator() void {
-    const check = gpa.?.deinit();
-    assert(check == .ok);
-    log.debug("Deinitialized GPA; {}", .{check});
+    if (gpa) |*value| {
+        const check = value.deinit();
+        assert(check == .ok);
+        log.debug("Deinitialized GPA; {}", .{check});
+        gpa = null;
+    }
 
-    gpa = null;
-    allocator = null;
+    allocator = undefined;
 }
 
 /// router
@@ -75,7 +100,7 @@ var dict: ?Dictionary = null;
 var dict_init_once = std.once(struct {
     fn callback() void {
         log.debug("Initializing Dictionary", .{});
-        dict = Dictionary.init(Self.allocator.?) catch unreachable;
+        dict = Dictionary.init(Self.allocator) catch unreachable;
     }
 }.callback);
 

@@ -24,11 +24,11 @@ pub fn build(b: *std.Build) !void {
     exe.addIncludePath(b.path("vendor/facil.io/lib/facil"));
     exe.linkLibC();
 
-    const xev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("xev", xev.module("xev"));
+    // const xev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
+    // exe.root_module.addImport("xev", xev.module("xev"));
 
-    const uuid = b.dependency("uuid", .{ .target = target, .optimize = optimize });
-    exe.root_module.addImport("uuid", uuid.module("uuid"));
+    // const uuid = b.dependency("uuid", .{ .target = target, .optimize = optimize });
+    // exe.root_module.addImport("uuid", uuid.module("uuid"));
 
     b.installArtifact(exe);
 

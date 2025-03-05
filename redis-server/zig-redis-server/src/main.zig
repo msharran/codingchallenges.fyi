@@ -5,7 +5,7 @@ const dictionary = @import("dictionary.zig");
 
 // uncomment the following lines for log level INFO
 //
-pub const std_options = .{
+pub const std_options: std.Options = .{
     // Set the log level to info
     .log_level = .info,
 };
