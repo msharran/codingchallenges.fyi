@@ -1,3 +1,4 @@
+use container::*;
 use nix::{self};
 use nix::{
     sys::wait::waitpid,
@@ -31,13 +32,13 @@ fn main() -> ExitCode {
 
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
-    println!("Running command: {:?}", args);
-    if args.is_empty() {
-        return Err("No command given".to_string());
+    println!("INFO Running command: {:?}", args);
+    if args.len() < 2 {
+        return Err("ERROR No command given".to_string());
     }
 
     let pid = process::id();
-    println!("My PID {}", pid);
+    println!("INFO Parent PID {}", pid);
 
     // This function implements the main logic of the program.
     // It forks the process to create a child that will run in a container.
@@ -55,7 +56,13 @@ fn run() -> Result<(), String> {
             println!("Parent execution done")
         }
         Ok(ForkResult::Child) => {
-            container::move_process_to_namespace(&args).unwrap();
+            // Only pass the command and arguments that needs to run
+            // inside the container
+            let args = args[1..].to_vec();
+            let run_result = Container::new(args).run();
+            if let Err(err) = run_result {
+                eprintln!("Container error: {}", err);
+            }
         }
         Err(_) => println!("Fork failed"),
     };
