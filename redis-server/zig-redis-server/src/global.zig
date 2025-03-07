@@ -1,10 +1,4 @@
-const std = @import("std");
-const builtin = @import("builtin");
-const assert = std.debug.assert;
-const Router = @import("Router.zig");
-const Dictionary = @import("dictionary.zig").Dictionary;
-const log = std.log.scoped(.global);
-/// Global represents a global state store for the redis server components.
+/// global represents a global state store for the redis server components.
 /// It provides a singleton pattern for easy integration with C code while controlling
 /// access to core components:
 /// - Allocator: The global memory allocator shared across components
@@ -13,12 +7,22 @@ const log = std.log.scoped(.global);
 ///
 /// All components are lazily initialized when first accessed and can be deinitialized
 /// when no longer needed. The singleton pattern ensures safe access from anywhere.
+const std = @import("std");
+const assert = std.debug.assert;
+const builtin = @import("builtin");
+
+const Dictionary = @import("dictionary.zig").Dictionary;
+const Router = @import("Router.zig");
+
+const log = std.log.scoped(.global);
 const Self = @This();
 
 /// Allocator
-pub const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator(.{});
+const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator(.{});
 
 var gpa: ?GeneralPurposeAllocator = null;
+
+// Initialized during redis start up
 pub var allocator: std.mem.Allocator = undefined;
 
 var allocator_init_once = std.once(struct {

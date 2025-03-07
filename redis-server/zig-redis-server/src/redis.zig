@@ -10,7 +10,7 @@ const Router = @import("Router.zig");
 const Resp = @import("Resp.zig");
 const Message = Resp.Message;
 const CommandCtx = @import("command.zig").CommandCtx;
-const Global = @import("Global.zig");
+const global = @import("global.zig");
 
 // const ProtocolPool = std.heap.MemoryPool(Protocol);
 // https://zig.news/xq/zig-build-explained-part-3-1ima
@@ -19,17 +19,17 @@ const fio = @import("fio.zig");
 /// init allocates memory for the server.
 /// Caller should call self.deinit to free the memory.
 pub fn init() void {
-    Global.initAllocator();
-    Global.initRouter();
-    Global.initDictionary();
+    global.initAllocator();
+    global.initRouter();
+    global.initDictionary();
 }
 
 pub fn deinit() void {
     fio.fio_stop();
 
-    Global.deinitDictionary();
-    Global.deinitRouter();
-    Global.deinitAllocator();
+    global.deinitDictionary();
+    global.deinitRouter();
+    global.deinitAllocator();
 }
 
 /// Start the IO reactor
@@ -37,6 +37,9 @@ pub fn deinit() void {
 /// Will start listeners etc.
 pub fn start() !void {
     const args = fio.fio_start_args{
+        // Keep threads to one to have a single-threaded event loop.
+        // This improves performance since we don't need locks on our
+        // global dictionary
         .threads = 1,
         // The number of worker processes to run (in addition to a root process)
         // This invokes facil.io's cluster mode, where a crashed worker will be automatically re-spawned and "hot restart" is enabled (using the USR1 signal).
@@ -58,7 +61,7 @@ pub fn start() !void {
 
 fn on_open(uuid: isize, _: ?*anyopaque) callconv(.C) void {
     // allocate fio_proto
-    const fio_proto = Global.allocator.create(fio.fio_protocol_s) catch unreachable;
+    const fio_proto = global.allocator.create(fio.fio_protocol_s) catch unreachable;
     fio_proto.* = fio.fio_protocol_s{
         .on_data = on_data,
         .on_close = on_close,
@@ -69,7 +72,7 @@ fn on_open(uuid: isize, _: ?*anyopaque) callconv(.C) void {
 }
 
 fn on_data(uuid: isize, _: *fio.fio_protocol_s) callconv(.C) void {
-    const dict = Global.dictionary();
+    const dict = global.dictionary();
 
     var buf: [4096]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&buf);
@@ -99,10 +102,10 @@ fn on_data(uuid: isize, _: *fio.fio_protocol_s) callconv(.C) void {
             break :blk Message.err("failed to deserialise");
         };
 
-    var cmd_ctx = CommandCtx.init(Global.allocator, msg);
+    var cmd_ctx = CommandCtx.init(global.allocator, msg);
     defer cmd_ctx.deinit();
 
-    const response = Global.router().route(&cmd_ctx);
+    const response = global.router().route(&cmd_ctx);
     const serialised_response = resp.serialise(response) catch "-Err failed to serialise\r\n";
 
     const write_buf = allocator.alloc(u8, serialised_response.len) catch unreachable;
@@ -132,5 +135,5 @@ fn on_close(uuid: isize, fio_protocol: *fio.fio_protocol_s) callconv(.C) void {
     // get the parent ptr, ie Protocol from fio_protocol
     log.debug("Connection {d} closed. fio_protocol_addr={*}", .{ uuid, fio_protocol });
     // deinit self
-    Global.allocator.destroy(fio_protocol);
+    global.allocator.destroy(fio_protocol);
 }

@@ -16,12 +16,8 @@ pub const Dictionary = struct {
     /// A tagged union that represents a Redis object.
     /// Tagged unions seems to be a good fit for this kind of data.
     /// Ref: https://zig.news/edyu/zig-unionenum-wtf-is-switchunionenum-2e02
-    pub const Value = union(ValueType) {
+    pub const Value = union(enum) {
         string: []const u8,
-    };
-
-    pub const ValueType = enum {
-        string,
     };
 
     pub fn init(allocator: std.mem.Allocator) !Dictionary {

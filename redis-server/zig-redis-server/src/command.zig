@@ -4,7 +4,7 @@ const assert = std.debug.assert;
 const expect = std.testing.expect;
 
 const Message = @import("Resp.zig").Message;
-const Global = @import("Global.zig");
+const global = @import("global.zig");
 const Dictionary = @import("dictionary.zig").Dictionary;
 
 pub const CommandCtx = struct {
@@ -48,7 +48,7 @@ pub fn set(r: *CommandCtx) Message {
     const key = items[1].value.single;
     const value = items[2].value.single;
 
-    Global.dictionary().putString(key, value) catch return Message.err("ERR failed to set");
+    global.dictionary().putString(key, value) catch return Message.err("ERR failed to set");
 
     return Message.simpleString("OK");
 }
@@ -61,7 +61,7 @@ pub fn get(r: *CommandCtx) Message {
 
     const key = items[1].value.single;
 
-    const value = Global.dictionary().getString(key);
+    const value = global.dictionary().getString(key);
     if (value == null) {
         log.err("ERR key not found; key={s}", .{key});
         return Message.nil();
