@@ -3,3 +3,5 @@ zig-out/
 target
 .ruby-lsp
 .DS_Store
+*.local.md
+.claude
