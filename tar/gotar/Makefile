@@ -1,2 +1,2 @@
 build:
-	go build -o tar main.go
+	go build -o ./bin/tar main.go
