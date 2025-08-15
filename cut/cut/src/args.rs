@@ -1,0 +1,105 @@
+use anyhow::{bail, Context, Result};
+use std::usize;
+
+/// Mode for cut operation - mutually exclusive flags
+#[derive(Debug, Clone)]
+pub enum Mode {
+    /// Extract fields (-f flag) - 1-based indexing, separated by delimiter
+    Field(usize),
+    /// Extract characters (-c flag) - 1-based indexing, character positions
+    Character(usize),
+    /// Extract bytes (-b flag) - 1-based indexing, byte positions
+    Byte(usize),
+}
+
+/// Command line arguments for the cut utility
+#[derive(Debug)]
+pub struct Args {
+    /// Mode to perform cut operation (mutually exclusive: -f, -c, or -b)
+    pub mode: Option<Mode>,
+
+    /// Input file names to process
+    /// If empty, reads from stdin
+    pub file_names: Vec<String>,
+
+    /// Binary name of the process
+    pub bin: String,
+}
+
+impl Args {
+    pub fn from(mut args: impl Iterator<Item = String>) -> Result<Args> {
+        let mut mode = None;
+        let mut file_names = Vec::new();
+
+        let bin = args.next().unwrap_or("cut".to_string());
+
+        while let Some(arg) = args.next() {
+            match arg {
+                arg if arg.starts_with("-f") => {
+                    if mode.is_some() {
+                        bail!("cut: only one of -f, -c, or -b may be specified");
+                    }
+                    let num = Self::parse_flag_value(&arg, &mut args, "-f")?;
+                    mode = Some(Mode::Field(num));
+                }
+                arg if arg.starts_with("-c") => {
+                    if mode.is_some() {
+                        bail!("cut: only one of -f, -c, or -b may be specified");
+                    }
+                    let num = Self::parse_flag_value(&arg, &mut args, "-c")?;
+                    mode = Some(Mode::Character(num));
+                }
+                arg if arg.starts_with("-b") => {
+                    if mode.is_some() {
+                        bail!("cut: only one of -f, -c, or -b may be specified");
+                    }
+                    let num = Self::parse_flag_value(&arg, &mut args, "-b")?;
+                    mode = Some(Mode::Byte(num));
+                }
+                arg if arg.starts_with("-") => {
+                    bail!("Unknown flag: {}", arg);
+                }
+                _ => {
+                    file_names.push(arg);
+                }
+            }
+        }
+
+        Ok(Args {
+            mode,
+            file_names,
+            bin,
+        })
+    }
+
+    fn parse_flag_value(
+        arg: &str,
+        args: &mut impl Iterator<Item = String>,
+        flag: &str,
+    ) -> Result<usize> {
+        if arg.len() > 2 {
+            // -f<number> format
+            let num_str = &arg[2..];
+            let parsed_num: usize = num_str
+                .parse()
+                .with_context(|| format!("Invalid {} number", flag))?;
+            if parsed_num == 0 {
+                bail!("cut: [-bcf] list: values may not include zero");
+            }
+            Ok(parsed_num)
+        } else {
+            // -f <number> format
+            if let Some(next_arg) = args.next() {
+                let parsed_num: usize = next_arg
+                    .parse()
+                    .with_context(|| format!("Invalid {} number", flag))?;
+                if parsed_num == 0 {
+                    bail!("cut: [-bcf] list: values may not include zero");
+                }
+                Ok(parsed_num)
+            } else {
+                bail!("Option {} requires an argument", flag);
+            }
+        }
+    }
+}
