@@ -2,10 +2,10 @@ use anyhow::{bail, Context, Result};
 use std::usize;
 
 /// Mode for cut operation - mutually exclusive flags
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Mode {
     /// Extract fields (-f flag) - 1-based indexing, separated by delimiter
-    Field(usize),
+    Field { index: usize, delimiter: char },
     /// Extract characters (-c flag) - 1-based indexing, character positions
     Character(usize),
     /// Extract bytes (-b flag) - 1-based indexing, byte positions
@@ -30,6 +30,7 @@ impl Args {
     pub fn from(mut args: impl Iterator<Item = String>) -> Result<Args> {
         let mut mode = None;
         let mut file_names = Vec::new();
+        let mut delimiter = '\t';
 
         let bin = args.next().unwrap_or("cut".to_string());
 
@@ -40,7 +41,7 @@ impl Args {
                         bail!("cut: only one of -f, -c, or -b may be specified");
                     }
                     let num = Self::parse_flag_value(&arg, &mut args, "-f")?;
-                    mode = Some(Mode::Field(num));
+                    mode = Some(Mode::Field { index: num, delimiter });
                 }
                 arg if arg.starts_with("-c") => {
                     if mode.is_some() {
@@ -55,6 +56,20 @@ impl Args {
                     }
                     let num = Self::parse_flag_value(&arg, &mut args, "-b")?;
                     mode = Some(Mode::Byte(num));
+                }
+                arg if arg.starts_with("-d") => {
+                    let delim_str = if arg.len() > 2 {
+                        arg[2..].to_string()
+                    } else {
+                        args.next().ok_or(anyhow::anyhow!("Option -d requires an argument"))?
+                    };
+                    if delim_str.chars().count() != 1 {
+                        bail!("cut: the delimiter must be a single character");
+                    }
+                    delimiter = delim_str.chars().next().unwrap();
+                    if let Some(Mode::Field { index, .. }) = mode {
+                        mode = Some(Mode::Field { index, delimiter });
+                    }
                 }
                 arg if arg.starts_with("-") => {
                     bail!("Unknown flag: {}", arg);

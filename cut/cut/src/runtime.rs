@@ -26,12 +26,12 @@ impl Runtime {
             .ok_or(anyhow!("One of -fcb should be passed"))?;
 
         match mode {
-            Mode::Field(field_num) => {
+            Mode::Field { index, delimiter } => {
                 for filename in &self.args.file_names {
                     let contents = Self::read_file(&filename)?;
                     let fields: Vec<&str> = contents
                         .lines()
-                        .map(|line| line.split('\t').nth(field_num - 1).unwrap_or(""))
+                        .map(|line| line.split(delimiter).nth(index - 1).unwrap_or(""))
                         .collect();
 
                     for field in fields {
