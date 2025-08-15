@@ -1,5 +1,6 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use std::env;
+use std::fs;
 use std::usize;
 
 /// Mode for cut operation - mutually exclusive flags
@@ -7,7 +8,7 @@ use std::usize;
 pub enum Mode {
     /// Extract fields (-f flag) - 1-based indexing, separated by delimiter
     Field(usize),
-    /// Extract characters (-c flag) - 1-based indexing, character positions  
+    /// Extract characters (-c flag) - 1-based indexing, character positions
     Character(usize),
     /// Extract bytes (-b flag) - 1-based indexing, byte positions
     Byte(usize),
@@ -121,56 +122,48 @@ impl Runtime {
 
     /// exec function executes the cut command
     pub fn exec(&self) -> Result<()> {
-        println!("Hello, I am your runtime. {:?}", self.args);
+
+        if self.args.file_names.len() == 0 {
+            bail!("filenames are missing") 
+        }
+
+        let mode = self
+            .args
+            .mode
+            .clone()
+            .ok_or(anyhow::anyhow!("One of -fcb should be passed"))?;
+
+        match mode {
+            Mode::Field(field_num) => {
+                for filename in &self.args.file_names {
+                    let contents = Self::read_file(&filename)?;
+                    let fields: Vec<&str> = contents
+                        .lines()
+                        .map(|line| line.split_whitespace().nth(field_num - 1).unwrap_or(""))
+                        .collect();
+
+                    for field in fields {
+                        println!("{}", field);
+                    }
+                }
+            }
+            Mode::Character(_char_num) => {
+                panic!("not implemented")
+            }
+            Mode::Byte(_byte_num) => {
+                panic!("not implemented")
+            }
+        }
+
         Ok(())
+    }
+
+    fn read_file(filename: &str) -> Result<String> {
+        fs::read_to_string(filename).with_context(|| format!("Failed to read file '{}'", filename))
     }
 }
 
 fn main() -> Result<()> {
     let runtime = Runtime::new()?;
     runtime.exec()
-
-    // let mode = args.mode.ok_or_else(|| {
-    //     anyhow::anyhow!("cut: you must specify a list of bytes, characters, or fields")
-    // })?;
-    //
-    // for filename in &args.file_names {
-    //     let contents = read_file(&filename)?;
-    //
-    //     match &mode {
-    //         Mode::Field(field_num) => {
-    //             let fields: Vec<&str> = contents
-    //                 .lines()
-    //                 .map(|line| line.split_whitespace().nth(field_num - 1).unwrap_or(""))
-    //                 .collect();
-    //
-    //             for field in fields {
-    //                 println!("{}", field);
-    //             }
-    //         }
-    //         Mode::Character(char_num) => {
-    //             for line in contents.lines() {
-    //                 let chars: Vec<char> = line.chars().collect();
-    //                 if let Some(ch) = chars.get(char_num - 1) {
-    //                     println!("{}", ch);
-    //                 } else {
-    //                     println!();
-    //                 }
-    //             }
-    //         }
-    //         Mode::Byte(byte_num) => {
-    //             for line in contents.lines() {
-    //                 let bytes = line.as_bytes();
-    //                 if let Some(byte) = bytes.get(byte_num - 1) {
-    //                     print!("{}", *byte as char);
-    //                 }
-    //                 println!();
-    //             }
-    //         }
-    //     }
-    // }
 }
-
-// fn read_file(filename: &str) -> Result<String> {
-//     fs::read_to_string(filename).with_context(|| format!("Failed to read file '{}'", filename))
-// }
