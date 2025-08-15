@@ -13,10 +13,6 @@ impl Runtime {
         Ok(Runtime { args })
     }
 
-    // pub fn get_args(&self) -> &Args {
-    //     &self.args
-    // }
-
     /// exec function executes the cut command
     pub fn exec(&self) -> Result<()> {
         if self.args.file_names.len() == 0 {
@@ -35,7 +31,7 @@ impl Runtime {
                     let contents = Self::read_file(&filename)?;
                     let fields: Vec<&str> = contents
                         .lines()
-                        .map(|line| line.split_whitespace().nth(field_num - 1).unwrap_or(""))
+                        .map(|line| line.split('\t').nth(field_num - 1).unwrap_or(""))
                         .collect();
 
                     for field in fields {
