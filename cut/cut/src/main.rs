@@ -1,6 +1,5 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::env;
-use std::fs;
 use std::usize;
 
 /// Mode for cut operation - mutually exclusive flags
@@ -16,7 +15,7 @@ pub enum Mode {
 
 /// Command line arguments for the cut utility
 #[derive(Debug)]
-pub struct CLI {
+pub struct Args {
     /// Mode to perform cut operation (mutually exclusive: -f, -c, or -b)
     pub mode: Option<Mode>,
 
@@ -28,8 +27,8 @@ pub struct CLI {
     pub bin: String,
 }
 
-impl CLI {
-    pub fn parse(mut args: impl Iterator<Item = String>) -> Result<CLI> {
+impl Args {
+    pub fn from(mut args: impl Iterator<Item = String>) -> Result<Args> {
         let mut mode = None;
         let mut file_names = Vec::new();
 
@@ -67,18 +66,23 @@ impl CLI {
             }
         }
 
-        Ok(CLI { mode, file_names, bin })
+        Ok(Args {
+            mode,
+            file_names,
+            bin,
+        })
     }
 
     fn parse_flag_value(
-        arg: &str, 
-        args: &mut impl Iterator<Item = String>, 
-        flag: &str
+        arg: &str,
+        args: &mut impl Iterator<Item = String>,
+        flag: &str,
     ) -> Result<usize> {
         if arg.len() > 2 {
             // -f<number> format
             let num_str = &arg[2..];
-            let parsed_num: usize = num_str.parse()
+            let parsed_num: usize = num_str
+                .parse()
                 .with_context(|| format!("Invalid {} number", flag))?;
             if parsed_num == 0 {
                 bail!("cut: [-bcf] list: values may not include zero");
@@ -87,7 +91,8 @@ impl CLI {
         } else {
             // -f <number> format
             if let Some(next_arg) = args.next() {
-                let parsed_num: usize = next_arg.parse()
+                let parsed_num: usize = next_arg
+                    .parse()
                     .with_context(|| format!("Invalid {} number", flag))?;
                 if parsed_num == 0 {
                     bail!("cut: [-bcf] list: values may not include zero");
@@ -100,52 +105,72 @@ impl CLI {
     }
 }
 
-fn main() -> Result<()> {
-    let cli = CLI::parse(env::args().into_iter())?;
+struct Runtime {
+    args: Args,
+}
 
-    let mode = cli.mode.ok_or_else(|| {
-        anyhow::anyhow!("cut: you must specify a list of bytes, characters, or fields")
-    })?;
-
-    for filename in &cli.file_names {
-        let contents = read_file(&filename)?;
-        
-        match &mode {
-            Mode::Field(field_num) => {
-                let fields: Vec<&str> = contents
-                    .lines()
-                    .map(|line| line.split_whitespace().nth(field_num - 1).unwrap_or(""))
-                    .collect();
-                
-                for field in fields {
-                    println!("{}", field);
-                }
-            }
-            Mode::Character(char_num) => {
-                for line in contents.lines() {
-                    let chars: Vec<char> = line.chars().collect();
-                    if let Some(ch) = chars.get(char_num - 1) {
-                        println!("{}", ch);
-                    } else {
-                        println!();
-                    }
-                }
-            }
-            Mode::Byte(byte_num) => {
-                for line in contents.lines() {
-                    let bytes = line.as_bytes();
-                    if let Some(byte) = bytes.get(byte_num - 1) {
-                        print!("{}", *byte as char);
-                    }
-                    println!();
-                }
-            }
-        }
+impl Runtime {
+    pub fn new() -> Result<Runtime> {
+        let args = Args::from(env::args().into_iter()).context("Failed to parse args")?;
+        Ok(Runtime { args })
     }
 
-    Ok(())
+    // pub fn get_args(&self) -> &Args {
+    //     &self.args
+    // }
+
+    /// exec function executes the cut command
+    pub fn exec(&self) -> Result<()> {
+        println!("Hello, I am your runtime. {:?}", self.args);
+        Ok(())
+    }
 }
 
-fn read_file(filename: &str) -> Result<String> {
-    fs::read_to_string(filename).with_context(|| format!("Failed to read file '{}'", filename))
+fn main() -> Result<()> {
+    let runtime = Runtime::new()?;
+    runtime.exec()
+
+    // let mode = args.mode.ok_or_else(|| {
+    //     anyhow::anyhow!("cut: you must specify a list of bytes, characters, or fields")
+    // })?;
+    //
+    // for filename in &args.file_names {
+    //     let contents = read_file(&filename)?;
+    //
+    //     match &mode {
+    //         Mode::Field(field_num) => {
+    //             let fields: Vec<&str> = contents
+    //                 .lines()
+    //                 .map(|line| line.split_whitespace().nth(field_num - 1).unwrap_or(""))
+    //                 .collect();
+    //
+    //             for field in fields {
+    //                 println!("{}", field);
+    //             }
+    //         }
+    //         Mode::Character(char_num) => {
+    //             for line in contents.lines() {
+    //                 let chars: Vec<char> = line.chars().collect();
+    //                 if let Some(ch) = chars.get(char_num - 1) {
+    //                     println!("{}", ch);
+    //                 } else {
+    //                     println!();
+    //                 }
+    //             }
+    //         }
+    //         Mode::Byte(byte_num) => {
+    //             for line in contents.lines() {
+    //                 let bytes = line.as_bytes();
+    //                 if let Some(byte) = bytes.get(byte_num - 1) {
+    //                     print!("{}", *byte as char);
+    //                 }
+    //                 println!();
+    //             }
+    //         }
+    //     }
+    // }
 }
+
+// fn read_file(filename: &str) -> Result<String> {
+//     fs::read_to_string(filename).with_context(|| format!("Failed to read file '{}'", filename))
+// }
