@@ -1,2 +1,2 @@
-linux:
-	docker run -it -v $(pwd):/zig-strace -w /zig-strace ubuntu bash
+build-aarch64-linux:
+	zig build -Dtarget=aarch64-linux
