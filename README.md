@@ -43,6 +43,16 @@ A basic container runtime implementation in Rust, similar to Docker.
 - Container isolation
 - Run Alpine Linux
 
+### strace System Call Tracer (Zig)
+[![Status](https://img.shields.io/badge/Status-In_Progress-yellow)](strace/zig-strace)
+
+A system call tracer implementation in Zig, similar to the Linux strace utility.
+
+**Key Features:**
+- Process tracing with ptrace
+- System call interception
+- Fork and exec handling
+
 ## License
 
 [MIT License](LICENSE)
