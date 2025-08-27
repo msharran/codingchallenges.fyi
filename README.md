@@ -2,56 +2,39 @@
 
 <div align="center">
 
-🚀 A collection of implementations for system programming challenges from [codingchallenges.fyi](https://codingchallenges.fyi)
+🚀 **A collection of system programming implementations from [codingchallenges.fyi](https://codingchallenges.fyi)**
+
+*Building fundamental components from scratch to explore low-level system concepts*
 
 </div>
 
-## Overview
+## 🛠️ Project Portfolio
 
-This repository contains my implementations of various system programming challenges, focusing on building fundamental components like networking tools, web servers and containers from scratch.
-These projects help maintain programming skills while exploring low-level system concepts.
+| 🎯 **Project** | 💻 **Language** | 📊 **Status** | ⚡ **Key Features** |
+|:---|:---:|:---:|:---|
+| **[strace Tracer](strace/zig-strace)** | ![Zig](https://img.shields.io/badge/-Zig-F7A41D?style=flat&logo=zig&logoColor=white) | ![In Progress](https://img.shields.io/badge/In_Progress-yellow?style=flat-square) | Process tracing • ptrace syscalls • Fork/exec handling |
+| **[cut Utility](cut/cc-go-cut)** | ![Go](https://img.shields.io/badge/-Go-00ADD8?style=flat&logo=go&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | Field extraction • Custom delimiters • FSM pattern |
+| **[TAR Archive Parser](tar/gotar)** | ![Go](https://img.shields.io/badge/-Go-00ADD8?style=flat&logo=go&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | State machine parser • Archive listing • Content extraction |
+| **[Redis Server](redis-server/zig-redis-server)** | ![Zig](https://img.shields.io/badge/-Zig-F7A41D?style=flat&logo=zig&logoColor=white) | ![Featured](https://img.shields.io/badge/Featured-brightgreen?style=flat-square) | RESP protocol • Redis commands • [Official solution](https://github.com/CodingChallengesFYI/SharedSolutions/blob/main/Solutions/challenge-redis.md) |
+| **[cURL HTTP Client](curl/cc-go-curl)** | ![Go](https://img.shields.io/badge/-Go-00ADD8?style=flat&logo=go&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | HTTP/1.1 • Request/response parsing • URL processing |
+| **[Git Plumbing](git/cc-go-git)** | ![Go](https://img.shields.io/badge/-Go-00ADD8?style=flat&logo=go&logoColor=white) | ![Partial](https://img.shields.io/badge/Partial-orange?style=flat-square) | Object storage • Hash functions • Git internals |
+| **[Forward Proxy](forwardproxy/go-forward-proxy)** | ![Go](https://img.shields.io/badge/-Go-00ADD8?style=flat&logo=go&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | HTTP proxy • Connection tunneling • Request forwarding |
+| **[Rate Limiter](rate-limiter/cc-go-ratelimiter)** | ![Go](https://img.shields.io/badge/-Go-00ADD8?style=flat&logo=go&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | Token bucket • Sliding window • Middleware pattern |
+| **[Docker Runtime](docker/rust-docker)** | ![Rust](https://img.shields.io/badge/-Rust-000000?style=flat&logo=rust&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | Container isolation • Alpine Linux • Namespace management |
+| **[DNS Resolver](dns-resolver/cc-go-dns-resolver)** | ![Go](https://img.shields.io/badge/-Go-00ADD8?style=flat&logo=go&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | DNS protocol • Query resolution • Record parsing |
+| **[Web Server](web-server/rust-webserver)** | ![Rust](https://img.shields.io/badge/-Rust-000000?style=flat&logo=rust&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | HTTP server • Static files • Request routing |
+| **[wc Utility](wc/c-wc)** | ![C](https://img.shields.io/badge/-C-A8B9CC?style=flat&logo=c&logoColor=black) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | Line/word/character counting • POSIX compliance |
+| **[sort Utility](sort/rust-sort)** | ![Rust](https://img.shields.io/badge/-Rust-000000?style=flat&logo=rust&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | Text sorting • Multiple algorithms • Performance optimized |
+| **[grep Pattern Matcher](grep/rust-grep)** | ![Rust](https://img.shields.io/badge/-Rust-000000?style=flat&logo=rust&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | Pattern matching • Regular expressions • File search |
 
-## Featured Projects
+---
 
-### Redis Server (Zig)
-[![Featured Solution](https://img.shields.io/badge/Status-Featured-brightgreen)](redis-server/zig-redis-server)
+<div align="center">
 
-A Redis-compatible server implementation in Zig that implements the RESP protocol and core Redis functionality.
-The implementation is listed in the [official solutions repository](https://github.com/CodingChallengesFYI/SharedSolutions/blob/main/Solutions/challenge-redis.md).
+### 🎯 **Focus Areas**
+**System Programming** • **Network Protocols** • **Container Technology** • **Process Management**
 
-**Key Features:**
-- RESP protocol implementation
-- Basic Redis commands support
-- Pure Zig implementation
-
-### DNS Resolver (Go)
-[![Status](https://img.shields.io/badge/Status-Complete-blue)](dns-resolver/cc-go-dns-resolver)
-
-A DNS resolver implementation in Go that handles domain name resolution from scratch.
-
-**Key Features:**
-- DNS protocol implementation
-- Query resolution
-- Record parsing
-
-### Docker Container Runtime (Rust)
-[![Status](https://img.shields.io/badge/Status-Complete-blue)](docker/rust-docker)
-
-A basic container runtime implementation in Rust, similar to Docker.
-
-**Key Features:**
-- Container isolation
-- Run Alpine Linux
-
-### strace System Call Tracer (Zig)
-[![Status](https://img.shields.io/badge/Status-In_Progress-yellow)](strace/zig-strace)
-
-A system call tracer implementation in Zig, similar to the Linux strace utility.
-
-**Key Features:**
-- Process tracing with ptrace
-- System call interception
-- Fork and exec handling
+</div>
 
 ## License
 
