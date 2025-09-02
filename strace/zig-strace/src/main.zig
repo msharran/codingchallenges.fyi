@@ -10,7 +10,7 @@ const wait = @import("./wait.zig");
 
 pub const log_level: std.log.Level = .debug;
 
-fn execChild(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runChildAsTracee(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     const ptracee = ptrace.Tracee.init();
     try ptracee.traceMe();
 
@@ -39,7 +39,7 @@ fn execChild(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     return posix.execvpeZ(args[1], argv_ptr, &envp);
 }
 
-fn listenChild(allocator: std.mem.Allocator, pid: posix.pid_t) !void {
+fn traceChild(allocator: std.mem.Allocator, pid: posix.pid_t) !void {
     const ptracer = ptrace.Tracer.init(pid);
     var res = try wait.sigStop(pid, 0); // Tracee stops due to traceme call
     //
@@ -90,9 +90,9 @@ pub fn main() !void {
 
     if (pid == 0) {
         // Child process will return pid 0
-        return execChild(allocator, args);
+        return runChildAsTracee(allocator, args);
     } else {
         // parent process after fork
-        try listenChild(allocator, pid);
+        try traceChild(allocator, pid);
     }
 }
