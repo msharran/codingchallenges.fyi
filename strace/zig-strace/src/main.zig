@@ -2,8 +2,9 @@ const std = @import("std");
 const os = std.os;
 const linux = os.linux;
 const posix = std.posix;
-const log_tracer = std.log.scoped(.parent);
-const log_tracee = std.log.scoped(.child);
+const log_tracer = std.log.scoped(.tracer);
+const log_tracee = std.log.scoped(.tracee);
+const log_syscall = std.log.scoped(.syscall);
 
 pub const log_level: std.log.Level = .debug;
 
@@ -51,6 +52,7 @@ const NT_PRSTATUS: u32 = 1; // General purpose registers
 
 // PTRACE options from linux/ptrace.h
 const PTRACE_O_TRACESYSGOOD: u32 = 1;
+const PTRACE_O_TRACEEXEC: u32 = 16;
 
 // PTRACE_GET_SYSCALL_INFO constants
 const PTRACE_SYSCALL_INFO_ENTRY: u8 = 1;
@@ -206,25 +208,31 @@ fn listenChild(allocator: std.mem.Allocator, pid: posix.pid_t) !void {
     var res = posix.waitpid(pid, 0);
     log_tracer.debug("child wait {} WIFEXITED={} WIFSTOPPED={}", .{ res, linux.W.IFEXITED(res.status), linux.W.IFSTOPPED(res.status) });
 
-    // Set PTRACE_O_TRACESYSGOOD to get SIGTRAP|0x80 for syscall-stops
-    log_tracer.debug("setting PTRACE_O_TRACESYSGOOD option", .{});
-    try posix.ptrace(linux.PTRACE.SETOPTIONS, pid, 0, PTRACE_O_TRACESYSGOOD);
+    // Set PTRACE_O_TRACESYSGOOD and PTRACE_O_TRACEEXEC options
+    log_tracer.debug("setting ptrace options", .{});
+    try posix.ptrace(linux.PTRACE.SETOPTIONS, pid, 0, PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXEC);
 
+    // Continue child to let it reach execve
+    log_tracer.debug("continuing child to reach execve", .{});
+    try posix.ptrace(linux.PTRACE.CONT, pid, 0, 0);
+    res = posix.waitpid(pid, 0);
+    log_tracer.debug("child wait after execve {} WIFEXITED={} WIFSTOPPED={}", .{ res, linux.W.IFEXITED(res.status), linux.W.IFSTOPPED(res.status) });
+
+    // Now we should be stopped after execve, ready to trace the new program
     log_tracer.debug("tracing child syscalls {}", .{pid});
 
-    for (0..10) |i| {
-        log_tracer.debug("trace iteration {}", .{i});
+    while (true) {
         try posix.ptrace(linux.PTRACE.SYSCALL, pid, 0, 0);
         res = posix.waitpid(pid, 0);
         log_tracer.debug("child wait {} WIFEXITED={} WIFSTOPPED={}", .{ res, linux.W.IFEXITED(res.status), linux.W.IFSTOPPED(res.status) });
 
         if (!linux.W.IFSTOPPED(res.status)) {
-            log_tracer.debug("Child no longer stopped, breaking", .{});
+            log_tracer.debug("child no longer stopped, breaking", .{});
             break;
         }
 
         const stop_signal = linux.W.STOPSIG(res.status);
-        log_tracer.debug("Stop signal: {} (0x{x}), SIGTRAP|0x80 = {}", .{ stop_signal, stop_signal, linux.SIG.TRAP | 0x80 });
+        log_tracer.debug("stop signal: {} (0x{x}), SIGTRAP|0x80 = {}", .{ stop_signal, stop_signal, linux.SIG.TRAP | 0x80 });
 
         if (stop_signal == (linux.SIG.TRAP | 0x80)) {
             const syscall_info = getSyscallInfo(allocator, pid) catch |err| {
@@ -235,21 +243,17 @@ fn listenChild(allocator: std.mem.Allocator, pid: posix.pid_t) !void {
 
             if (syscall_info.op == PTRACE_SYSCALL_INFO_ENTRY) {
                 const syscall_name = getSyscallName(syscall_info.data.entry.nr);
-                log_tracer.info("{s}({x}, {x}, {x}, {x}, {x}, {x})", .{ syscall_name, syscall_info.data.entry.args[0], syscall_info.data.entry.args[1], syscall_info.data.entry.args[2], syscall_info.data.entry.args[3], syscall_info.data.entry.args[4], syscall_info.data.entry.args[5] });
+                log_syscall.info("{s}({x}, {x}, {x}, {x}, {x}, {x})", .{ syscall_name, syscall_info.data.entry.args[0], syscall_info.data.entry.args[1], syscall_info.data.entry.args[2], syscall_info.data.entry.args[3], syscall_info.data.entry.args[4], syscall_info.data.entry.args[5] });
             } else if (syscall_info.op == PTRACE_SYSCALL_INFO_EXIT) {
-                log_tracer.info("retval={} error={}", .{ syscall_info.data.exit.rval, syscall_info.data.exit.is_error });
+                log_syscall.info("retval={} error={}", .{ syscall_info.data.exit.rval, syscall_info.data.exit.is_error });
             } else {
-                log_tracer.debug("Unknown syscall info op: {}", .{syscall_info.op});
+                log_syscall.err("unknown syscall info op: {}", .{syscall_info.op});
             }
         } else {
-            log_tracer.info("Child stopped by signal: {} (not syscall-stop)", .{stop_signal});
+            log_tracer.debug("child stopped by signal: {} (not syscall-stop)", .{stop_signal});
+            break;
         }
     }
-
-    log_tracer.debug("detaching from child {}", .{pid});
-    try posix.ptrace(linux.PTRACE.DETACH, pid, 0, 0);
-    res = posix.waitpid(pid, 0);
-    log_tracer.debug("child wait {} WIFEXITED={} WIFSTOPPED={}", .{ res, linux.W.IFEXITED(res.status), linux.W.IFSTOPPED(res.status) });
 }
 
 pub fn main() !void {
