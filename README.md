@@ -26,6 +26,7 @@
 | **[wc Utility](wc/c-wc)** | ![C](https://img.shields.io/badge/-C-A8B9CC?style=flat&logo=c&logoColor=black) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | Line/word/character counting • POSIX compliance |
 | **[sort Utility](sort/rust-sort)** | ![Rust](https://img.shields.io/badge/-Rust-000000?style=flat&logo=rust&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | Text sorting • Multiple algorithms • Performance optimized |
 | **[grep Pattern Matcher](grep/rust-grep)** | ![Rust](https://img.shields.io/badge/-Rust-000000?style=flat&logo=rust&logoColor=white) | ![Complete](https://img.shields.io/badge/Complete-blue?style=flat-square) | Pattern matching • Regular expressions • File search |
+| **[tmux Multiplexer](tmux/cc-go-tmux)** | ![Go](https://img.shields.io/badge/-Go-00ADD8?style=flat&logo=go&logoColor=white) | ![In Progress](https://img.shields.io/badge/In_Progress-yellow?style=flat-square) | PTY • Client/server • Sessions • Panes • [Challenge #127](https://codingchallenges.substack.com/p/coding-challenge-127-tmux) |
 
 ---
 
